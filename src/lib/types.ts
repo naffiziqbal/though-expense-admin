@@ -4,11 +4,21 @@ export interface AdminUser {
   name: string | null;
 }
 
+export interface PremiumBreakdown {
+  dbFlag: number;
+  heuristicBillable: number;
+  withStoreProduct: number;
+  stalePeriodEnd: number;
+  statusExpired: number;
+  noPremiumUntil: number;
+}
+
 export interface OverviewStats {
   totalUsers: number;
   premiumUsers: number;
   freeUsers: number;
   premiumRate: number;
+  premiumBreakdown: PremiumBreakdown;
   signups7d: number;
   signups30d: number;
   totalExpenses: number;
@@ -107,7 +117,9 @@ export type RevenueCatSyncResponse =
   | {
       configured: true;
       entitlementId: string;
+      dbPremiumCount: number;
       sampled: number;
+      rcActiveInSample: number;
       mismatchCount: number;
       mismatches: Array<{
         userId: string;

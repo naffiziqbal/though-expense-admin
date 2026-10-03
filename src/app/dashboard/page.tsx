@@ -33,7 +33,16 @@ export default function DashboardPage() {
 
   const cards = [
     { label: 'Total users', value: stats.totalUsers.toLocaleString() },
-    { label: 'Premium users', value: stats.premiumUsers.toLocaleString() },
+    {
+      label: 'Premium (DB flag)',
+      value: stats.premiumUsers.toLocaleString(),
+      hint: 'App access — from Postgres, not RevenueCat',
+    },
+    {
+      label: 'Billable (heuristic)',
+      value: stats.premiumBreakdown.heuristicBillable.toLocaleString(),
+      hint: 'Store product + active/grace/cancelled + period not ended',
+    },
     { label: 'Premium rate', value: `${stats.premiumRate}%` },
     { label: 'Signups (7d)', value: stats.signups7d.toLocaleString() },
     { label: 'Signups (30d)', value: stats.signups30d.toLocaleString() },
@@ -59,10 +68,27 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <p className="text-3xl font-bold">{c.value}</p>
+              {'hint' in c && c.hint ? (
+                <p className="mt-1 text-xs text-muted-foreground">{c.hint}</p>
+              ) : null}
             </CardContent>
           </Card>
         ))}
       </div>
+
+      {stats.premiumBreakdown.stalePeriodEnd > 0 || stats.premiumBreakdown.statusExpired > 0 ? (
+        <Card className="border-amber-500/40 bg-amber-500/5">
+          <CardHeader>
+            <CardTitle className="text-base">Premium drift</CardTitle>
+          </CardHeader>
+          <CardContent className="text-sm text-muted-foreground">
+            {stats.premiumBreakdown.stalePeriodEnd} users still flagged premium after{' '}
+            <code className="rounded bg-muted px-1">premiumUntil</code> passed;{' '}
+            {stats.premiumBreakdown.statusExpired} have status expired. RevenueCat “Active subscriptions” only
+            counts live paid subs — use Billing ops / Operations to reconcile.
+          </CardContent>
+        </Card>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>

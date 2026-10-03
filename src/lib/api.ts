@@ -145,7 +145,12 @@ export async function fetchRagHealth() {
   return res.data.data as import('./types').RagHealthResponse;
 }
 
-export async function fetchRevenueCatSync(limit = 25) {
+export async function fetchRevenueCatSync(limit = 200) {
   const res = await client().get('/api/admin/integrations/revenuecat', { params: { limit } });
   return res.data.data as import('./types').RevenueCatSyncResponse;
+}
+
+export async function reconcileStalePremium() {
+  const res = await client().post('/api/admin/billing/reconcile-stale');
+  return res.data.data as { updated: number };
 }

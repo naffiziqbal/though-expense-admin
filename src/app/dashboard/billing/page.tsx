@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { fetchBillingDrift, fetchBillingEvents } from '@/lib/api';
+import { fetchBillingDrift, fetchBillingEvents, reconcileStalePremium } from '@/lib/api';
 import type { BillingDriftUser, BillingWebhookEventRow } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,8 @@ export default function BillingOpsPage() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [loadingEvents, setLoadingEvents] = useState(true);
+  const [reconciling, setReconciling] = useState(false);
+  const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
 
   useEffect(() => {
     fetchBillingDrift().then((d) => setDrift(d.items));
@@ -45,6 +47,42 @@ export default function BillingOpsPage() {
           RevenueCat webhook history and users whose DB subscription fields look inconsistent.
         </p>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Stale premium flags</CardTitle>
+            <CardDescription>
+              Clears <code className="rounded bg-muted px-1">isPremium</code> when{' '}
+              <code className="rounded bg-muted px-1">premiumUntil</code> is past or status is expired (missed
+              EXPIRATION webhooks). Does not call RevenueCat.
+            </CardDescription>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={reconciling}
+            onClick={async () => {
+              setReconciling(true);
+              setReconcileMsg(null);
+              try {
+                const { updated } = await reconcileStalePremium();
+                setReconcileMsg(updated ? `Cleared premium on ${updated} user(s).` : 'No stale flags to clear.');
+                fetchBillingDrift().then((d) => setDrift(d.items));
+              } catch {
+                setReconcileMsg('Reconcile failed.');
+              } finally {
+                setReconciling(false);
+              }
+            }}
+          >
+            {reconciling ? 'Running…' : 'Reconcile stale'}
+          </Button>
+        </CardHeader>
+        {reconcileMsg ? (
+          <CardContent className="pt-0 text-sm text-muted-foreground">{reconcileMsg}</CardContent>
+        ) : null}
+      </Card>
 
       <Card>
         <CardHeader>

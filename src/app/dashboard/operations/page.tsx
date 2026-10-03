@@ -196,7 +196,7 @@ export default function OperationsPage() {
         <CardHeader>
           <CardTitle>RevenueCat vs database</CardTitle>
           <CardDescription>
-            Samples recent premium / subscription users and compares <code className="rounded bg-muted px-1">isPremium</code>{' '}
+            Checks all DB premium users (up to 200) and compares <code className="rounded bg-muted px-1">isPremium</code>{' '}
             to the configured entitlement. Requires <code className="rounded bg-muted px-1">REVENUECAT_SECRET_API_KEY</code>{' '}
             on the API.
           </CardDescription>
@@ -209,7 +209,9 @@ export default function OperationsPage() {
           ) : (
             <>
               <p className="mb-4 text-sm text-muted-foreground">
-                Entitlement <strong>{rc.entitlementId}</strong> · sampled {rc.sampled} · mismatches{' '}
+                Entitlement <strong>{rc.entitlementId}</strong> · DB premium{' '}
+                <strong>{rc.dbPremiumCount}</strong> · checked {rc.sampled} · RC active in check{' '}
+                <strong>{rc.rcActiveInSample}</strong> (compare to RevenueCat “Active subscriptions”) · mismatches{' '}
                 <strong>{rc.mismatchCount}</strong>
               </p>
               {rc.mismatches.length === 0 ? (
