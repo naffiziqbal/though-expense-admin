@@ -121,5 +121,31 @@ export async function fetchAuditLogs(page: number) {
 
 export async function fetchSystemHealth() {
   const res = await client().get('/api/admin/system/health');
-  return res.data.data as { status: string; timestamp: string; uptime: number; nodeEnv: string };
+  return res.data.data as {
+    status: string;
+    timestamp: string;
+    uptime: number;
+    nodeEnv: string;
+    redis?: { ok: boolean; message: string };
+  };
+}
+
+export async function fetchAiUsage(days = 30) {
+  const res = await client().get('/api/admin/ai/usage', { params: { days } });
+  return res.data.data as import('./types').AiUsageResponse;
+}
+
+export async function fetchQueueMonitor() {
+  const res = await client().get('/api/admin/queues');
+  return res.data.data as import('./types').QueueMonitorResponse;
+}
+
+export async function fetchRagHealth() {
+  const res = await client().get('/api/admin/rag/health');
+  return res.data.data as import('./types').RagHealthResponse;
+}
+
+export async function fetchRevenueCatSync(limit = 25) {
+  const res = await client().get('/api/admin/integrations/revenuecat', { params: { limit } });
+  return res.data.data as import('./types').RevenueCatSyncResponse;
 }

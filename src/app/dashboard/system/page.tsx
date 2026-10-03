@@ -34,8 +34,17 @@ export default function SystemPage() {
           ) : (
             <>
               <p className="flex items-center gap-2">
-                Status: <Badge variant="default">{health.status}</Badge>
+                Status:{' '}
+                <Badge variant={health.status === 'ok' ? 'default' : 'destructive'}>{health.status}</Badge>
               </p>
+              {health.redis && (
+                <p className="flex items-center gap-2">
+                  Redis:{' '}
+                  <Badge variant={health.redis.ok ? 'default' : 'destructive'}>
+                    {health.redis.ok ? 'ok' : health.redis.message}
+                  </Badge>
+                </p>
+              )}
               <p>
                 <span className="text-muted-foreground">Environment:</span> {health.nodeEnv}
               </p>

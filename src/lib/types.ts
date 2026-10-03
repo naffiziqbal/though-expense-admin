@@ -65,6 +65,60 @@ export interface BillingDriftUser {
   reason: string;
 }
 
+export interface AiUsageResponse {
+  series: Array<{ date: string; total: number; byKind: Record<string, number> }>;
+  totals: Record<string, number>;
+  fallbacks: Record<string, number>;
+}
+
+export interface QueueMonitorResponse {
+  queues: Array<{
+    name: string;
+    counts: {
+      waiting: number;
+      active: number;
+      completed: number;
+      failed: number;
+      delayed: number;
+    };
+    recentFailed: Array<{ id: string; name: string; failedReason: string; timestamp: number }>;
+  }>;
+  generatedAt: string;
+}
+
+export interface RagHealthResponse {
+  postgres: {
+    expenses: number;
+    vectorRows: number;
+    usersWithEmbeddings: number;
+    missingEmbeddingsEstimate: number;
+  };
+  pinecone: {
+    ready: boolean;
+    indexName: string;
+    totalVectors: number | null;
+    dimension: number | null;
+  };
+  generatedAt: string;
+}
+
+export type RevenueCatSyncResponse =
+  | { configured: false; message: string }
+  | {
+      configured: true;
+      entitlementId: string;
+      sampled: number;
+      mismatchCount: number;
+      mismatches: Array<{
+        userId: string;
+        email: string;
+        dbPremium: boolean;
+        rcPremium: boolean;
+        reason: string;
+      }>;
+      generatedAt: string;
+    };
+
 export interface AdminAuditLogRow {
   id: string;
   action: string;

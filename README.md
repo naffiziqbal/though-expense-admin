@@ -30,6 +30,8 @@ pnpm admin:create -- --email ops@example.com --password 'YourSecurePass123' --na
 
 Sign in at `/login` with that **email and password** (not a regular app user).
 
+For **RevenueCat entitlement checks** on Operations, set `REVENUECAT_SECRET_API_KEY` (and optionally `REVENUECAT_ENTITLEMENT_ID`) on the server.
+
 ## Pages
 
 | Route | Purpose |
@@ -38,7 +40,10 @@ Sign in at `/login` with that **email and password** (not a regular app user).
 | `/dashboard/growth` | Daily signup chart |
 | `/dashboard/users` | Search and paginate app users |
 | `/dashboard/subscriptions` | Premium counts |
-| `/dashboard/system` | API health |
+| `/dashboard/billing` | Webhook log + subscription drift heuristics |
+| `/dashboard/operations` | AI usage, BullMQ, RAG/Pinecone, RevenueCat vs DB |
+| `/dashboard/audit` | Admin action audit log |
+| `/dashboard/system` | API health + Redis ping |
 
 ## Security
 

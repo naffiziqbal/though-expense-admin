@@ -14,6 +14,7 @@ import {
   Receipt,
   Server,
   Users,
+  Workflow,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -26,6 +27,7 @@ const nav = [
   { href: '/dashboard/users', label: 'Users', icon: Users },
   { href: '/dashboard/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/dashboard/billing', label: 'Billing ops', icon: Receipt },
+  { href: '/dashboard/operations', label: 'Operations', icon: Workflow },
   { href: '/dashboard/audit', label: 'Audit log', icon: FileText },
   { href: '/dashboard/system', label: 'System', icon: Server },
 ];
