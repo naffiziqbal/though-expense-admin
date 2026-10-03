@@ -1,36 +1,46 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ThoughtExpense Admin
 
-## Getting Started
+Internal SaaS console for operators: growth, users, subscriptions, and system health.
 
-First, run the development server:
+## Stack
+
+- Next.js 16 (App Router)
+- shadcn/ui + Tailwind CSS v4
+- Dedicated **Admin** accounts on the API (`/api/admin/auth/login`)
+
+## Setup
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+cd admin
+pnpm install
+cp .env.example .env.local
+# NEXT_PUBLIC_API_URL=http://localhost:7100
+pnpm dev   # http://localhost:3020
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Create an admin account (on the server)
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Apply migrations, then:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+cd server
+pnpm prisma migrate deploy   # or migrate dev locally
+pnpm admin:create -- --email ops@example.com --password 'YourSecurePass123' --name "Ops"
+```
 
-## Learn More
+Sign in at `/login` with that **email and password** (not a regular app user).
 
-To learn more about Next.js, take a look at the following resources:
+## Pages
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Route | Purpose |
+|-------|---------|
+| `/dashboard` | KPIs: users, premium, signups, expenses, devices |
+| `/dashboard/growth` | Daily signup chart |
+| `/dashboard/users` | Search and paginate app users |
+| `/dashboard/subscriptions` | Premium counts |
+| `/dashboard/system` | API health |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Security
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Admin tokens are separate from user JWTs (`admin_access` purpose).
+- Do not expose this app publicly without VPN or SSO in front.
