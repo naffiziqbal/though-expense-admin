@@ -66,7 +66,7 @@ jobs:
             pnpm install --frozen-lockfile
             pnpm build
             if command -v pm2 >/dev/null 2>&1; then
-              pm2 restart thought-admin
+              pm2 restart thought-admin || pm2 restart 18
             else
               echo "Build finished. Start with: pm2 restart thought-admin"
             fi
