@@ -41,6 +41,8 @@ export interface GrowthPoint {
 export type UserAccessFilter = 'all' | 'free' | 'premium' | 'manual' | 'store' | 'paying';
 export type PremiumAccess = 'none' | 'store' | 'manual';
 
+export type AccountModerationStatus = 'active' | 'suspended' | 'banned';
+
 export interface UserListItem {
   id: string;
   email: string;
@@ -48,6 +50,7 @@ export interface UserListItem {
   currency: string;
   isPremium: boolean;
   premiumAccess?: PremiumAccess;
+  accountStatus?: AccountModerationStatus;
   subscriptionStatus: string | null;
   subscriptionProductId: string | null;
   subscriptionStore: string | null;
@@ -86,6 +89,19 @@ export interface AiUsageResponse {
   series: Array<{ date: string; total: number; byKind: Record<string, number> }>;
   totals: Record<string, number>;
   fallbacks: Record<string, number>;
+}
+
+export interface UserAiUsageResponse {
+  days: number;
+  note?: string;
+  totals: { calls: number; tokens: number };
+  byKind: Record<string, { calls: number; tokens: number }>;
+  series: Array<{
+    date: string;
+    totalCalls: number;
+    totalTokens: number;
+    byKind: Record<string, { calls: number; tokens: number }>;
+  }>;
 }
 
 export interface QueueMonitorResponse {
@@ -185,6 +201,9 @@ export type UserRevenueCatLookup =
     };
 
 export interface UserDetail extends Omit<UserListItem, '_count'> {
+  suspendedAt?: string | null;
+  bannedAt?: string | null;
+  moderationNote?: string | null;
   pushEnabled: boolean;
   budgetAlertsEnabled: boolean;
   tokenVersion?: number;

@@ -94,7 +94,15 @@ export async function fetchUser(id: string): Promise<UserDetail> {
   return res.data.data;
 }
 
-export async function patchUser(id: string, body: { isPremium?: boolean; subscriptionStatus?: string | null }) {
+export async function patchUser(
+  id: string,
+  body: {
+    isPremium?: boolean;
+    subscriptionStatus?: string | null;
+    /** ISO datetime, or null for no fixed end (lifetime manual comp) */
+    premiumUntil?: string | null;
+  }
+) {
   const res = await client().patch(`/api/admin/users/${id}`, body);
   return res.data.data as UserDetail;
 }
@@ -102,6 +110,15 @@ export async function patchUser(id: string, body: { isPremium?: boolean; subscri
 export async function revokeUserSessions(id: string) {
   const res = await client().post(`/api/admin/users/${id}/revoke-sessions`);
   return res.data.data as { id: string; email: string; tokenVersion: number };
+}
+
+export async function moderateUser(
+  id: string,
+  action: 'suspend' | 'ban' | 'reactivate',
+  note?: string
+) {
+  const res = await client().post(`/api/admin/users/${id}/moderation`, { action, note });
+  return res.data.data as UserDetail;
 }
 
 export async function fetchBillingEvents(page: number) {
@@ -139,6 +156,11 @@ export async function fetchSystemHealth() {
 export async function fetchAiUsage(days = 30) {
   const res = await client().get('/api/admin/ai/usage', { params: { days } });
   return res.data.data as import('./types').AiUsageResponse;
+}
+
+export async function fetchUserAiUsage(userId: string, days = 30) {
+  const res = await client().get(`/api/admin/users/${userId}/ai-usage`, { params: { days } });
+  return res.data.data as import('./types').UserAiUsageResponse;
 }
 
 export async function fetchQueueMonitor() {

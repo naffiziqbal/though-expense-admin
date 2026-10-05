@@ -19,6 +19,12 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
 
+function moderationBadge(u: UserListItem) {
+  if (u.accountStatus === 'banned') return <Badge variant="destructive">Banned</Badge>;
+  if (u.accountStatus === 'suspended') return <Badge variant="outline">Suspended</Badge>;
+  return null;
+}
+
 function planBadge(u: UserListItem) {
   if (!u.isPremium) return <Badge variant="secondary">Free</Badge>;
   if (u.premiumAccess === 'manual') {
@@ -161,7 +167,12 @@ function UsersPageContent() {
                       <div className="font-medium">{u.name || '—'}</div>
                       <div className="text-xs text-muted-foreground">{u.email}</div>
                     </TableCell>
-                    <TableCell>{planBadge(u)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {moderationBadge(u)}
+                        {planBadge(u)}
+                      </div>
+                    </TableCell>
                     <TableCell>{u._count.expenses}</TableCell>
                     <TableCell>{u._count.deviceTokens}</TableCell>
                     <TableCell className="text-muted-foreground">

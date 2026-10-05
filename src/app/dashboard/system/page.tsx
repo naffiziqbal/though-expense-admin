@@ -59,17 +59,6 @@ export default function SystemPage() {
           )}
         </CardContent>
       </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Admin access</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-muted-foreground">
-          Console operators live in the <code className="rounded bg-muted px-1">Admin</code> table.
-          Create accounts with <code className="rounded bg-muted px-1">pnpm admin:create</code> on the server.
-          Admin JWTs use <code className="rounded bg-muted px-1">purpose: admin_access</code> and cannot access user app routes.
-        </CardContent>
-      </Card>
     </div>
   );
 }
