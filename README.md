@@ -49,3 +49,22 @@ For **RevenueCat entitlement checks** on Operations, set `REVENUECAT_SECRET_API_
 
 - Admin tokens are separate from user JWTs (`admin_access` purpose).
 - Do not expose this app publicly without VPN or SSO in front.
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`), aligned with `thought-expense-server`:
+
+| Job | When | What |
+|-----|------|------|
+| **test** | PR + push to `main` | `pnpm install`, lint, typecheck, `next build` |
+| **deploy** | push to `main` only | SSH to VPS: pull, build, `pm2 restart thought-admin` |
+
+**Repository secrets** (same as server): `VPS_HOST`, `USERNAME`, `VPS_PASSWORD`.
+
+**VPS layout** (adjust in the workflow if your path differs):
+
+```text
+/var/www/personal/thoughtExpense/thought-expense-admin
+```
+
+On the VPS, keep `.env` with production `NEXT_PUBLIC_API_URL` **before** `pnpm build` (Next inlines public env at build time). Run with `pnpm start` on port **3022** under PM2, e.g. `pm2 start pnpm --name thought-admin -- start`.

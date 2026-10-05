@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint and build
+    runs-on: ubuntu-latest
+
+    env:
+      # Required at build time for Next.js (value is not used in CI assertions)
+      NEXT_PUBLIC_API_URL: http://localhost:7100
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+  deploy:
+    name: Build on VPS
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Pull and build admin on VPS
+        uses: appleboy/ssh-action@v0.1.8
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.USERNAME }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: 22
+          script_stop: true
+          command_timeout: 15m
+          script: |
+            set -euo pipefail
+            cd /var/www/personal/thoughtExpense/thought-expense-admin
+            git fetch origin main
+            git checkout main
+            git pull --ff-only origin main
+            pnpm install --frozen-lockfile
+            pnpm build
+            if command -v pm2 >/dev/null 2>&1; then
+              pm2 restart thought-admin
+            else
+              echo "Build finished. Start with: pm2 restart thought-admin"
+            fi

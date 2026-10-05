@@ -75,8 +75,14 @@ export async function fetchGrowth(days = 30): Promise<GrowthPoint[]> {
   return res.data.data;
 }
 
-export async function fetchUsers(page: number, search?: string) {
-  const res = await client().get('/api/admin/users', { params: { page, limit: 20, search } });
+export async function fetchUsers(
+  page: number,
+  search?: string,
+  access?: import('./types').UserAccessFilter
+) {
+  const res = await client().get('/api/admin/users', {
+    params: { page, limit: 20, search, access: access && access !== 'all' ? access : undefined },
+  });
   return res.data.data as {
     items: UserListItem[];
     pagination: { page: number; limit: number; total: number; pages: number };

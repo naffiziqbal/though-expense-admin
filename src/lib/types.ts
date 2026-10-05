@@ -6,6 +6,9 @@ export interface AdminUser {
 
 export interface PremiumBreakdown {
   dbFlag: number;
+  manualComp: number;
+  storeBacked: number;
+  payingActive: number;
   heuristicBillable: number;
   withStoreProduct: number;
   stalePeriodEnd: number;
@@ -35,12 +38,16 @@ export interface GrowthPoint {
   premiumSignups: number;
 }
 
+export type UserAccessFilter = 'all' | 'free' | 'premium' | 'manual' | 'store' | 'paying';
+export type PremiumAccess = 'none' | 'store' | 'manual';
+
 export interface UserListItem {
   id: string;
   email: string;
   name: string | null;
   currency: string;
   isPremium: boolean;
+  premiumAccess?: PremiumAccess;
   subscriptionStatus: string | null;
   subscriptionProductId: string | null;
   subscriptionStore: string | null;
@@ -153,14 +160,51 @@ export interface SubscriptionSummary {
   summaryLine: string | null;
 }
 
+export interface UserBillingEventRow {
+  id: string;
+  externalEventId: string | null;
+  eventType: string;
+  productId: string | null;
+  store: string | null;
+  outcome: string;
+  createdAt: string;
+}
+
+export interface UserExpenseRow {
+  id: string;
+  description: string;
+  amount: number;
+  currency: string;
+  category: string;
+  date: string;
+}
+
+export type UserRevenueCatLookup =
+  | { configured: false; message: string }
+  | {
+      configured: true;
+      entitlementId: string;
+      dbPremium: boolean;
+      rcPremium: boolean;
+      inSync: boolean;
+      subscriberFound: boolean;
+      expiresDate: string | null;
+      productId: string | null;
+      reason: string | null;
+    };
+
 export interface UserDetail extends Omit<UserListItem, '_count'> {
   pushEnabled: boolean;
   budgetAlertsEnabled: boolean;
   tokenVersion?: number;
   updatedAt: string;
+  lastExpenseAt?: string | null;
   subscription?: SubscriptionSummary;
-  premiumAccess?: 'none' | 'store' | 'manual';
+  premiumAccess?: PremiumAccess;
   subscriptionDrift?: string | null;
+  billingEvents?: UserBillingEventRow[];
+  recentExpenses?: UserExpenseRow[];
+  revenueCat?: UserRevenueCatLookup;
   _count: {
     expenses: number;
     insights: number;
