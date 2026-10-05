@@ -3,58 +3,93 @@
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
+import { AlertTriangle, ChevronRight, Copy, RefreshCw } from 'lucide-react';
 import { fetchUser, patchUser, revokeUserSessions } from '@/lib/api';
-import type { UserDetail, UserRevenueCatLookup } from '@/lib/types';
+import type { PremiumAccess, UserDetail, UserRevenueCatLookup } from '@/lib/types';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
 
-function formatTs(iso: string | null | undefined): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return `${format(d, 'PPpp')} (${d.toISOString()})`;
+function initials(name: string | null, email: string): string {
+  const base = name?.trim() || email;
+  const parts = base.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return base.slice(0, 2).toUpperCase();
 }
 
-function RevenueCatCard({ rc, manualPremium }: { rc?: UserRevenueCatLookup; manualPremium: boolean }) {
-  if (!rc) return null;
-  if (!rc.configured) {
-    return <p className="text-sm text-muted-foreground">{rc.message}</p>;
-  }
-  const expectedManual = manualPremium && !rc.rcPremium;
+function fmt(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  return format(new Date(iso), 'MMM d, yyyy, h:mm a');
+}
+
+function PlanBadge({ access, isPremium }: { access?: PremiumAccess; isPremium: boolean }) {
+  if (!isPremium) return <Badge variant="secondary">Free</Badge>;
+  if (access === 'manual') return <Badge className="bg-violet-600 hover:bg-violet-600">Manual premium</Badge>;
+  if (access === 'store') return <Badge>Store premium</Badge>;
+  return <Badge>Premium</Badge>;
+}
+
+function Field({ label, children, mono }: { label: string; children: React.ReactNode; mono?: boolean }) {
   return (
-    <div className="space-y-2 text-sm">
-      <p>
-        Entitlement <strong>{rc.entitlementId}</strong> · DB premium:{' '}
-        <strong>{rc.dbPremium ? 'yes' : 'no'}</strong> · RC active:{' '}
-        <strong>{rc.rcPremium ? 'yes' : 'no'}</strong>
-      </p>
-      {rc.subscriberFound ? (
-        <>
-          <p>
-            <span className="text-muted-foreground">RC product:</span> {rc.productId || '—'}
-          </p>
-          <p>
-            <span className="text-muted-foreground">RC expires:</span>{' '}
-            {rc.expiresDate ? formatTs(rc.expiresDate) : 'lifetime / none'}
-          </p>
-        </>
-      ) : (
-        <p className="text-muted-foreground">No RevenueCat subscriber for this app user id.</p>
-      )}
-      {rc.inSync || expectedManual ? (
-        <Badge variant={expectedManual ? 'secondary' : 'default'}>
-          {expectedManual ? 'Manual comp — inactive RC is normal' : 'In sync'}
-        </Badge>
-      ) : (
-        <p className="rounded-md border border-amber-500/40 bg-amber-500/5 px-3 py-2 text-amber-900 dark:text-amber-100">
-          {rc.reason}
-        </p>
-      )}
+    <div className="grid gap-1 py-3 sm:grid-cols-[11rem_1fr] sm:gap-4 sm:py-2.5">
+      <dt className="text-sm text-muted-foreground">{label}</dt>
+      <dd className={cn('text-sm', mono && 'font-mono text-xs')}>{children}</dd>
     </div>
+  );
+}
+
+function Panel({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-lg border bg-background">
+      <div className="border-b px-4 py-3 sm:px-5">
+        <h2 className="text-sm font-semibold">{title}</h2>
+        {description ? <p className="mt-0.5 text-xs text-muted-foreground">{description}</p> : null}
+      </div>
+      <div className="divide-y px-4 sm:px-5">{children}</div>
+    </section>
+  );
+}
+
+function RcBlock({ rc, manual }: { rc?: UserRevenueCatLookup; manual: boolean }) {
+  if (!rc) return <p className="py-3 text-sm text-muted-foreground">No lookup data.</p>;
+  if (!rc.configured) {
+    return (
+      <div className="space-y-2 py-3 text-sm">
+        <p className="text-muted-foreground">{rc.message}</p>
+        <Link href="/dashboard/operations" className="font-medium text-primary underline-offset-4 hover:underline">
+          Operations → RevenueCat
+        </Link>
+      </div>
+    );
+  }
+  const ok = rc.inSync || (manual && !rc.rcPremium);
+  return (
+    <>
+      <div className="flex flex-wrap items-center gap-2 py-3">
+        {ok ? (
+          <Badge variant="secondary">Aligned</Badge>
+        ) : (
+          <Badge variant="outline" className="border-amber-500/60 text-amber-800 dark:text-amber-200">
+            Mismatch
+          </Badge>
+        )}
+        {!ok && rc.reason ? <span className="text-sm text-muted-foreground">{rc.reason}</span> : null}
+      </div>
+      <Field label="Entitlement">{rc.entitlementId}</Field>
+      <Field label="DB premium">{rc.dbPremium ? 'Yes' : 'No'}</Field>
+      <Field label="RC active">{rc.rcPremium ? 'Yes' : 'No'}</Field>
+      <Field label="Subscriber">{rc.subscriberFound ? 'Yes' : 'No'}</Field>
+      <Field label="Product" mono>
+        {rc.productId || '—'}
+      </Field>
+      <Field label="Expires">{rc.expiresDate ? fmt(rc.expiresDate) : '—'}</Field>
+    </>
   );
 }
 
@@ -62,10 +97,10 @@ export default function UserDetailPage() {
   const params = useParams();
   const id = typeof params.id === 'string' ? params.id : params.id?.[0];
   const [user, setUser] = useState<UserDetail | null>(null);
+  const [notFound, setNotFound] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
   const [loadedKey, setLoadedKey] = useState('');
-  const requestKey = id ? `${id}:${refreshKey}` : '';
-  const loading = !!id && loadedKey !== requestKey;
+  const loading = !!id && loadedKey !== `${id}:${refreshKey}`;
   const [saving, setSaving] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
@@ -74,15 +109,16 @@ export default function UserDetailPage() {
     let cancelled = false;
     const key = `${id}:${refreshKey}`;
     fetchUser(id)
-      .then((detail) => {
+      .then((d) => {
         if (cancelled) return;
-        setUser(detail);
+        setNotFound(false);
+        setUser(d);
         setLoadedKey(key);
       })
       .catch(() => {
         if (cancelled) return;
-        toast.error('User not found');
         setUser(null);
+        setNotFound(true);
         setLoadedKey(key);
       });
     return () => {
@@ -90,251 +126,233 @@ export default function UserDetailPage() {
     };
   }, [id, refreshKey]);
 
-  const load = useCallback(() => {
-    setRefreshKey((k) => k + 1);
-  }, []);
+  const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
-  async function revokeSessions() {
-    if (!user) return;
-    setRevoking(true);
-    try {
-      await revokeUserSessions(user.id);
-      toast.success('All app sessions revoked — user must sign in again.');
-      load();
-    } catch {
-      toast.error('Could not revoke sessions');
-    } finally {
-      setRevoking(false);
-    }
+  if (loading) return <Skeleton className="h-[480px] w-full rounded-lg" />;
+
+  if (notFound || !user) {
+    return (
+      <div className="mx-auto max-w-md space-y-4 py-12 text-center">
+        <p className="text-lg font-medium">User not found</p>
+        <Button variant="outline" nativeButton={false} render={<Link href="/dashboard/users" />}>
+          Back to users
+        </Button>
+      </div>
+    );
   }
 
-  async function togglePremium() {
-    if (!user) return;
-    setSaving(true);
-    try {
-      const updated = await patchUser(user.id, { isPremium: !user.isPremium });
-      setUser(updated);
-      toast.success('User updated');
-    } catch {
-      toast.error('Update failed');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  if (loading || !user) return <Skeleton className="h-[600px] w-full max-w-3xl" />;
-
-  const accessLabel =
-    user.premiumAccess === 'store'
-      ? 'Store subscription (RevenueCat / Play)'
-      : user.premiumAccess === 'manual'
-        ? 'Manual / comp (no store product on file)'
-        : 'Free';
-
-  const showDrift =
+  const drift =
     user.subscriptionDrift &&
     !(user.premiumAccess === 'manual' && user.revenueCat?.configured && !user.revenueCat.rcPremium);
 
+  const access =
+    user.premiumAccess === 'store'
+      ? 'Store (Play / App Store)'
+      : user.premiumAccess === 'manual'
+        ? 'Manual comp'
+        : 'Free';
+
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{user.name || user.email}</h1>
-          <p className="text-muted-foreground">{user.email}</p>
+    <div className="space-y-6 font-sans">
+      <nav className="flex flex-wrap items-center gap-1 text-sm text-muted-foreground">
+        <Link href="/dashboard/users" className="hover:text-foreground">
+          Users
+        </Link>
+        <ChevronRight className="size-3.5" />
+        <span className="truncate text-foreground">{user.email}</span>
+      </nav>
+
+      <div className="flex flex-col gap-4 border-b pb-6 sm:flex-row sm:items-start sm:justify-between">
+        <div className="flex gap-4">
+          <Avatar className="size-14 text-base">
+            <AvatarFallback>{initials(user.name, user.email)}</AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h1 className="text-xl font-semibold tracking-tight">{user.name?.trim() || 'Unnamed user'}</h1>
+              <PlanBadge access={user.premiumAccess} isPremium={user.isPremium} />
+            </div>
+            <p className="text-sm text-muted-foreground">{user.email}</p>
+            <p className="text-xs text-muted-foreground">
+              Joined {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
+              {' · '}
+              {user.currency}
+              {user.lastExpenseAt
+                ? ` · Last activity ${formatDistanceToNow(new Date(user.lastExpenseAt), { addSuffix: true })}`
+                : ''}
+            </p>
+          </div>
         </div>
-        {user.isPremium ? (
-          user.premiumAccess === 'manual' ? (
-            <Badge className="bg-violet-600 hover:bg-violet-600">Premium · manual</Badge>
-          ) : (
-            <Badge>Premium</Badge>
-          )
-        ) : (
-          <Badge variant="secondary">Free</Badge>
-        )}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" size="sm" onClick={reload}>
+            <RefreshCw className="size-3.5" />
+            Refresh
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={saving}
+            onClick={async () => {
+              setSaving(true);
+              try {
+                const u = await patchUser(user.id, { isPremium: !user.isPremium });
+                setUser(u);
+                toast.success(user.isPremium ? 'Premium removed' : 'Premium granted');
+              } catch {
+                toast.error('Could not update user');
+              } finally {
+                setSaving(false);
+              }
+            }}
+          >
+            {user.isPremium ? 'Revoke premium' : 'Grant premium'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={revoking}
+            onClick={async () => {
+              setRevoking(true);
+              try {
+                await revokeUserSessions(user.id);
+                toast.success('Sessions revoked');
+                reload();
+              } catch {
+                toast.error('Revoke failed');
+              } finally {
+                setRevoking(false);
+              }
+            }}
+          >
+            {revoking ? 'Revoking…' : 'Revoke sessions'}
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              void navigator.clipboard.writeText(user.id);
+              toast.success('Copied user id');
+            }}
+          >
+            <Copy className="size-3.5" />
+            ID
+          </Button>
+        </div>
       </div>
 
-      {showDrift ? (
-        <Card className="border-amber-500/50 bg-amber-500/5">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Subscription drift</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm text-muted-foreground">{user.subscriptionDrift}</CardContent>
-        </Card>
+      {drift ? (
+        <div className="flex gap-3 rounded-lg border border-amber-500/50 bg-amber-500/[0.07] px-4 py-3 text-sm">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-600" />
+          <p>{user.subscriptionDrift}</p>
+        </div>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Subscription</CardTitle>
-            <CardDescription>Same refresh rules as in-app billing status</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {user.subscription?.summaryLine ? (
-              <p className="rounded-md border bg-muted/40 px-3 py-2 font-medium">{user.subscription.summaryLine}</p>
-            ) : null}
-            <p>
-              <span className="text-muted-foreground">Access source:</span> {accessLabel}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Status:</span> {user.subscriptionStatus || '—'}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Product:</span> {user.subscriptionProductId || '—'}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Store:</span> {user.subscriptionStore || '—'}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Premium since:</span> {formatTs(user.premiumSince)}
-            </p>
-            <p>
-              <span className="text-muted-foreground">Premium until:</span> {formatTs(user.premiumUntil)}
-            </p>
-            <Button variant="outline" disabled={saving} onClick={togglePremium} className="mt-4">
-              {user.isPremium ? 'Revoke premium (manual)' : 'Grant premium (manual)'}
-            </Button>
-            <p className="text-xs text-muted-foreground">
-              Manual grants do not sync to RevenueCat. Your 19 comp users should show as{' '}
-              <strong>Premium · manual</strong> in the user list filter.
-            </p>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue="billing">
+        <TabsList variant="line" className="h-9 w-full justify-start rounded-none border-b bg-transparent p-0">
+          <TabsTrigger value="billing" className="rounded-none px-4 data-active:after:opacity-100">
+            Billing
+          </TabsTrigger>
+          <TabsTrigger value="usage" className="rounded-none px-4">
+            Usage
+          </TabsTrigger>
+          <TabsTrigger value="webhooks" className="rounded-none px-4">
+            Webhooks
+          </TabsTrigger>
+          <TabsTrigger value="settings" className="rounded-none px-4">
+            Settings
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>RevenueCat</CardTitle>
-            <CardDescription>Live lookup for this user id</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <RevenueCatCard rc={user.revenueCat} manualPremium={user.premiumAccess === 'manual'} />
-          </CardContent>
-        </Card>
+        <TabsContent value="billing" className="mt-6 space-y-4">
+          {user.subscription?.summaryLine ? (
+            <p className="rounded-lg bg-muted/50 px-4 py-3 text-sm">{user.subscription.summaryLine}</p>
+          ) : null}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Panel title="App database" description="Fields that drive premium in the API">
+              <Field label="Access">{access}</Field>
+              <Field label="Status">{user.subscriptionStatus || '—'}</Field>
+              <Field label="Product" mono>
+                {user.subscriptionProductId || '—'}
+              </Field>
+              <Field label="Store">{user.subscriptionStore || '—'}</Field>
+              <Field label="Premium since">{fmt(user.premiumSince)}</Field>
+              <Field label="Premium until">{fmt(user.premiumUntil)}</Field>
+            </Panel>
+            <Panel title="RevenueCat" description="Secret key must be set on the API server">
+              <RcBlock rc={user.revenueCat} manual={user.premiumAccess === 'manual'} />
+            </Panel>
+          </div>
+        </TabsContent>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity summary</CardTitle>
-          </CardHeader>
-          <CardContent className="grid grid-cols-2 gap-3 text-sm">
-            <Stat label="Expenses" value={user._count.expenses} />
-            <Stat label="Insights" value={user._count.insights} />
-            <Stat label="Goals" value={user._count.goals} />
-            <Stat label="Budgets" value={user._count.budgets} />
-            <Stat label="Devices" value={user._count.deviceTokens} />
-            <Stat label="Recurring" value={user._count.recurringRules} />
-          </CardContent>
-          <CardContent className="border-t pt-4 text-sm text-muted-foreground">
-            Last expense: {user.lastExpenseAt ? formatTs(user.lastExpenseAt) : '—'}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent expenses</CardTitle>
-          <CardDescription>Latest 12 by expense date</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!user.recentExpenses?.length ? (
-            <p className="text-sm text-muted-foreground">No expenses logged.</p>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Category</TableHead>
-                    <TableHead className="text-right">Amount</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {user.recentExpenses.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {format(new Date(e.date), 'MMM d, yyyy')}
-                      </TableCell>
-                      <TableCell>{e.description}</TableCell>
-                      <TableCell>{e.category}</TableCell>
-                      <TableCell className="text-right font-medium">
-                        {e.amount.toLocaleString()} {e.currency}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+        <TabsContent value="usage" className="mt-6">
+          <Panel title="Product usage" description="Aggregate counts only — expense line items are not shown in admin">
+            <div className="grid grid-cols-2 gap-3 py-4 sm:grid-cols-3">
+              {(
+                [
+                  ['Expenses', user._count.expenses],
+                  ['Insights', user._count.insights],
+                  ['Goals', user._count.goals],
+                  ['Budgets', user._count.budgets],
+                  ['Devices', user._count.deviceTokens],
+                  ['Recurring', user._count.recurringRules],
+                ] as const
+              ).map(([label, n]) => (
+                <div key={label} className="rounded-md bg-muted/40 px-3 py-2">
+                  <p className="text-xs text-muted-foreground">{label}</p>
+                  <p className="text-lg font-semibold tabular-nums">{n.toLocaleString()}</p>
+                </div>
+              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+            <Field label="Last expense">{user.lastExpenseAt ? fmt(user.lastExpenseAt) : 'Never'}</Field>
+          </Panel>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Billing webhooks</CardTitle>
-          <CardDescription>RevenueCat events linked to this user</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!user.billingEvents?.length ? (
-            <p className="text-sm text-muted-foreground">
-              No webhook events stored for this user (common for manual premium).
-            </p>
-          ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>When</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Outcome</TableHead>
-                    <TableHead>Product</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {user.billingEvents.map((ev) => (
-                    <TableRow key={ev.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">
-                        {format(new Date(ev.createdAt), 'MMM d, HH:mm')}
-                      </TableCell>
-                      <TableCell>{ev.eventType}</TableCell>
-                      <TableCell>{ev.outcome}</TableCell>
-                      <TableCell className="text-xs">{ev.productId || '—'}</TableCell>
+        <TabsContent value="webhooks" className="mt-6">
+          <Panel title="Webhook history" description="RevenueCat events for this user">
+            {!user.billingEvents?.length ? (
+              <p className="py-4 text-sm text-muted-foreground">No events on file.</p>
+            ) : (
+              <div className="-mx-4 overflow-x-auto sm:-mx-5">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Time</TableHead>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Outcome</TableHead>
+                      <TableHead>Product</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {user.billingEvents.map((ev) => (
+                      <TableRow key={ev.id}>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">
+                          {format(new Date(ev.createdAt), 'MMM d, HH:mm')}
+                        </TableCell>
+                        <TableCell>{ev.eventType}</TableCell>
+                        <TableCell>{ev.outcome}</TableCell>
+                        <TableCell className="font-mono text-xs">{ev.productId || '—'}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </Panel>
+        </TabsContent>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Account</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm text-muted-foreground">
-          <p>Currency: {user.currency}</p>
-          <p>Push: {user.pushEnabled ? 'on' : 'off'} · Budget alerts: {user.budgetAlertsEnabled ? 'on' : 'off'}</p>
-          <p>Joined: {formatTs(user.createdAt)}</p>
-          <p className="font-mono text-xs text-foreground">User ID: {user.id}</p>
-          {user.tokenVersion != null ? <p>tokenVersion: {user.tokenVersion}</p> : null}
-          <Button variant="destructive" size="sm" disabled={revoking} onClick={revokeSessions}>
-            {revoking ? 'Revoking…' : 'Revoke all sessions'}
-          </Button>
-          <p className="text-xs">
-            <Link href="/dashboard/users" className="text-primary hover:underline">
-              Back to users
-            </Link>
-          </p>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded-lg border p-3">
-      <p className="text-muted-foreground">{label}</p>
-      <p className="text-xl font-semibold text-foreground">{value}</p>
+        <TabsContent value="settings" className="mt-6">
+          <Panel title="Account">
+            <Field label="Push">{user.pushEnabled ? 'Enabled' : 'Disabled'}</Field>
+            <Field label="Budget alerts">{user.budgetAlertsEnabled ? 'Enabled' : 'Disabled'}</Field>
+            <Field label="Created">{fmt(user.createdAt)}</Field>
+            <Field label="Updated">{fmt(user.updatedAt)}</Field>
+            {user.tokenVersion != null ? <Field label="Token version">{user.tokenVersion}</Field> : null}
+            <Field label="User id" mono>
+              {user.id}
+            </Field>
+          </Panel>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

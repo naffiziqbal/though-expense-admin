@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { ThemeToggle } from '@/components/theme-toggle';
 import { useAuthStore } from '@/store/authStore';
 
 export default function LoginPage() {
@@ -31,11 +32,17 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
+    <div className="relative flex min-h-screen items-center justify-center bg-muted/40 p-4">
+      <div className="absolute right-4 top-4">
+        <ThemeToggle />
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>ThoughtExpense Admin</CardTitle>
-          <CardDescription>Sign in with your console Admin account (created via pnpm admin:create on the API).</CardDescription>
+          <CardDescription>
+            Sign in with your console admin account (created via <code className="text-xs">pnpm admin:create</code> on the
+            API).
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={onSubmit} className="space-y-4">

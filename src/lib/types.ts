@@ -170,15 +170,6 @@ export interface UserBillingEventRow {
   createdAt: string;
 }
 
-export interface UserExpenseRow {
-  id: string;
-  description: string;
-  amount: number;
-  currency: string;
-  category: string;
-  date: string;
-}
-
 export type UserRevenueCatLookup =
   | { configured: false; message: string }
   | {
@@ -203,7 +194,6 @@ export interface UserDetail extends Omit<UserListItem, '_count'> {
   premiumAccess?: PremiumAccess;
   subscriptionDrift?: string | null;
   billingEvents?: UserBillingEventRow[];
-  recentExpenses?: UserExpenseRow[];
   revenueCat?: UserRevenueCatLookup;
   _count: {
     expenses: number;
