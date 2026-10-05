@@ -142,10 +142,25 @@ export interface AdminAuditLogRow {
   admin: { id: string; email: string; name: string | null };
 }
 
+export interface SubscriptionSummary {
+  plan: string | null;
+  planLabel: string | null;
+  status: string | null;
+  premiumSince: string | null;
+  premiumUntil: string | null;
+  productId: string | null;
+  store: string | null;
+  summaryLine: string | null;
+}
+
 export interface UserDetail extends Omit<UserListItem, '_count'> {
   pushEnabled: boolean;
   budgetAlertsEnabled: boolean;
+  tokenVersion?: number;
   updatedAt: string;
+  subscription?: SubscriptionSummary;
+  premiumAccess?: 'none' | 'store' | 'manual';
+  subscriptionDrift?: string | null;
   _count: {
     expenses: number;
     insights: number;

@@ -90,7 +90,7 @@ export async function fetchUser(id: string): Promise<UserDetail> {
 
 export async function patchUser(id: string, body: { isPremium?: boolean; subscriptionStatus?: string | null }) {
   const res = await client().patch(`/api/admin/users/${id}`, body);
-  return res.data.data;
+  return res.data.data as UserDetail;
 }
 
 export async function revokeUserSessions(id: string) {
