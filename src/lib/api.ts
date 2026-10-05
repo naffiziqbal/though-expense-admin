@@ -102,9 +102,12 @@ export async function patchUser(
     /** ISO datetime, or null for no fixed end (lifetime manual comp) */
     premiumUntil?: string | null;
   }
-) {
+): Promise<{ user: UserDetail; premiumEmailSent?: boolean }> {
   const res = await client().patch(`/api/admin/users/${id}`, body);
-  return res.data.data as UserDetail;
+  return {
+    user: res.data.data as UserDetail,
+    premiumEmailSent: res.data.meta?.premiumEmailSent as boolean | undefined,
+  };
 }
 
 export async function revokeUserSessions(id: string) {

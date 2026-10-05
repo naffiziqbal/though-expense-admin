@@ -229,13 +229,20 @@ export default function UserDetailPage() {
     }
     setSaving(true);
     try {
-      const u = await patchUser(user.id, {
+      const { user: u, premiumEmailSent } = await patchUser(user.id, {
         isPremium: true,
         premiumUntil: grantLifetime ? null : premiumUntilFromDateInput(grantEndDate),
       });
       setUser(u);
       setGrantOpen(false);
-      toast.success(grantLifetime ? 'Lifetime premium granted' : 'Premium granted until end date');
+      const base = grantLifetime ? 'Lifetime premium granted' : 'Premium granted until end date';
+      if (premiumEmailSent === false) {
+        toast.warning(`${base} — could not send email (check Resend on the API server)`);
+      } else if (premiumEmailSent === true) {
+        toast.success(`${base} — user notified by email`);
+      } else {
+        toast.success(base);
+      }
     } catch {
       toast.error('Could not grant premium');
     } finally {
@@ -247,7 +254,7 @@ export default function UserDetailPage() {
     if (!user) return;
     setSaving(true);
     try {
-      const u = await patchUser(user.id, { isPremium: false });
+      const { user: u } = await patchUser(user.id, { isPremium: false });
       setUser(u);
       toast.success('Premium revoked');
     } catch {
