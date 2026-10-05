@@ -59,7 +59,7 @@ jobs:
           command_timeout: 15m
           script: |
             set -euo pipefail
-            cd /var/www/personal/thoughtExpense/thought-expense-admin
+            cd /var/www/personal/thoughtExpense/admin
             git fetch origin main
             git checkout main
             git pull --ff-only origin main

@@ -64,7 +64,7 @@ GitHub Actions (`.github/workflows/ci.yml`), aligned with `thought-expense-serve
 **VPS layout** (adjust in the workflow if your path differs):
 
 ```text
-/var/www/personal/thoughtExpense/thought-expense-admin
+/var/www/personal/thoughtExpense/admin
 ```
 
 On the VPS, keep `.env` with production `NEXT_PUBLIC_API_URL` **before** `pnpm build` (Next inlines public env at build time). Run with `pnpm start` on port **3022** under PM2, e.g. `pm2 start pnpm --name thought-admin -- start`.
