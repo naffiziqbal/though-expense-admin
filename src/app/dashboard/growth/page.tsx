@@ -17,10 +17,25 @@ const chartConfig = {
 export default function GrowthPage() {
   const [days, setDays] = useState(30);
   const [data, setData] = useState<GrowthPoint[] | null>(null);
+  const [loadedDays, setLoadedDays] = useState<number | null>(null);
+  const loading = loadedDays !== days;
 
   useEffect(() => {
-    setData(null);
-    fetchGrowth(days).then(setData).catch(() => setData([]));
+    let cancelled = false;
+    fetchGrowth(days)
+      .then((rows) => {
+        if (cancelled) return;
+        setData(rows);
+        setLoadedDays(days);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setData([]);
+        setLoadedDays(days);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [days]);
 
   return (
@@ -45,7 +60,7 @@ export default function GrowthPage() {
           <CardDescription>Includes users who registered with premium already active (e.g. promo).</CardDescription>
         </CardHeader>
         <CardContent>
-          {!data ? (
+          {loading || !data ? (
             <Skeleton className="h-[320px] w-full" />
           ) : (
             <ChartContainer config={chartConfig} className="h-[320px] w-full">

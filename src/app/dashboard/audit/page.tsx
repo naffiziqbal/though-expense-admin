@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { format } from 'date-fns';
 import { fetchAuditLogs } from '@/lib/api';
 import type { AdminAuditLogRow } from '@/lib/types';
@@ -14,22 +14,21 @@ export default function AuditPage() {
   const [items, setItems] = useState<AdminAuditLogRow[]>([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchAuditLogs(page);
-      setItems(data.items);
-      setPages(data.pagination.pages);
-    } finally {
-      setLoading(false);
-    }
-  }, [page]);
+  const [loadedPage, setLoadedPage] = useState(0);
+  const loading = loadedPage !== page;
 
   useEffect(() => {
-    load();
-  }, [load]);
+    let cancelled = false;
+    fetchAuditLogs(page).then((data) => {
+      if (cancelled) return;
+      setItems(data.items);
+      setPages(data.pagination.pages);
+      setLoadedPage(page);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [page]);
 
   return (
     <div className="space-y-6">

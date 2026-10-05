@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { fetchBillingDrift, fetchBillingEvents, reconcileStalePremium } from '@/lib/api';
@@ -16,7 +16,8 @@ export default function BillingOpsPage() {
   const [events, setEvents] = useState<BillingWebhookEventRow[]>([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
-  const [loadingEvents, setLoadingEvents] = useState(true);
+  const [loadedEventsPage, setLoadedEventsPage] = useState(0);
+  const loadingEvents = loadedEventsPage !== page;
   const [reconciling, setReconciling] = useState(false);
   const [reconcileMsg, setReconcileMsg] = useState<string | null>(null);
 
@@ -24,20 +25,18 @@ export default function BillingOpsPage() {
     fetchBillingDrift().then((d) => setDrift(d.items));
   }, []);
 
-  const loadEvents = useCallback(async () => {
-    setLoadingEvents(true);
-    try {
-      const data = await fetchBillingEvents(page);
+  useEffect(() => {
+    let cancelled = false;
+    fetchBillingEvents(page).then((data) => {
+      if (cancelled) return;
       setEvents(data.items);
       setPages(data.pagination.pages);
-    } finally {
-      setLoadingEvents(false);
-    }
+      setLoadedEventsPage(page);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [page]);
-
-  useEffect(() => {
-    loadEvents();
-  }, [loadEvents]);
 
   return (
     <div className="space-y-8">

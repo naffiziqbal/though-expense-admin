@@ -34,13 +34,28 @@ function kindLabel(kind: string): string {
 export default function OperationsPage() {
   const [days, setDays] = useState(30);
   const [ai, setAi] = useState<AiUsageResponse | null>(null);
+  const [loadedAiDays, setLoadedAiDays] = useState<number | null>(null);
+  const aiLoading = loadedAiDays !== days;
   const [queues, setQueues] = useState<QueueMonitorResponse | null>(null);
   const [rag, setRag] = useState<RagHealthResponse | null>(null);
   const [rc, setRc] = useState<RevenueCatSyncResponse | null>(null);
 
   useEffect(() => {
-    setAi(null);
-    fetchAiUsage(days).then(setAi).catch(() => setAi(null));
+    let cancelled = false;
+    fetchAiUsage(days)
+      .then((usage) => {
+        if (cancelled) return;
+        setAi(usage);
+        setLoadedAiDays(days);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setAi(null);
+        setLoadedAiDays(days);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [days]);
 
   useEffect(() => {
@@ -91,7 +106,7 @@ export default function OperationsPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          {!ai ? (
+          {aiLoading || !ai ? (
             <Skeleton className="h-[280px] w-full" />
           ) : (
             <>

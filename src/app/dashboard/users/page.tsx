@@ -1,8 +1,8 @@
 'use client';
 
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { format } from 'date-fns';
 import { fetchUsers } from '@/lib/api';
 import type { UserAccessFilter, UserListItem } from '@/lib/types';
@@ -52,35 +52,41 @@ function parseAccess(raw: string | null): UserAccessFilter {
 
 function UsersPageContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const access = parseAccess(searchParams.get('access'));
   const [items, setItems] = useState<UserListItem[]>([]);
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [total, setTotal] = useState(0);
   const [search, setSearch] = useState('');
   const [query, setQuery] = useState('');
-  const [access, setAccess] = useState<UserAccessFilter>(() => parseAccess(searchParams.get('access')));
-  const [loading, setLoading] = useState(true);
+  const [loadedKey, setLoadedKey] = useState('');
+  const fetchKey = `${page}\0${query}\0${access}`;
+  const loading = loadedKey !== fetchKey;
+
+  function setAccessFilter(next: UserAccessFilter) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (next === 'all') params.delete('access');
+    else params.set('access', next);
+    const q = params.toString();
+    router.replace(q ? `${pathname}?${q}` : pathname);
+    setPage(1);
+  }
 
   useEffect(() => {
-    setAccess(parseAccess(searchParams.get('access')));
-    setPage(1);
-  }, [searchParams]);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await fetchUsers(page, query || undefined, access);
+    let cancelled = false;
+    fetchUsers(page, query || undefined, access).then((data) => {
+      if (cancelled) return;
       setItems(data.items);
       setPages(data.pagination.pages);
       setTotal(data.pagination.total);
-    } finally {
-      setLoading(false);
-    }
-  }, [page, query, access]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
+      setLoadedKey(fetchKey);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [page, query, access, fetchKey]);
 
   return (
     <div className="space-y-6">
@@ -108,13 +114,7 @@ function UsersPageContent() {
           />
           <Button type="submit">Search</Button>
         </form>
-        <Select
-          value={access}
-          onValueChange={(v) => {
-            setAccess(v as UserAccessFilter);
-            setPage(1);
-          }}
-        >
+        <Select value={access} onValueChange={(v) => setAccessFilter(v as UserAccessFilter)}>
           <SelectTrigger className="w-[200px]">
             <SelectValue placeholder="Access" />
           </SelectTrigger>

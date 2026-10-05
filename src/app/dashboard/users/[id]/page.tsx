@@ -62,26 +62,37 @@ export default function UserDetailPage() {
   const params = useParams();
   const id = typeof params.id === 'string' ? params.id : params.id?.[0];
   const [user, setUser] = useState<UserDetail | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [loadedKey, setLoadedKey] = useState('');
+  const requestKey = id ? `${id}:${refreshKey}` : '';
+  const loading = !!id && loadedKey !== requestKey;
   const [saving, setSaving] = useState(false);
   const [revoking, setRevoking] = useState(false);
 
-  const load = useCallback(async () => {
-    if (!id) return;
-    setLoading(true);
-    try {
-      setUser(await fetchUser(id));
-    } catch {
-      toast.error('User not found');
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
-
   useEffect(() => {
-    load();
-  }, [load]);
+    if (!id) return;
+    let cancelled = false;
+    const key = `${id}:${refreshKey}`;
+    fetchUser(id)
+      .then((detail) => {
+        if (cancelled) return;
+        setUser(detail);
+        setLoadedKey(key);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        toast.error('User not found');
+        setUser(null);
+        setLoadedKey(key);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [id, refreshKey]);
+
+  const load = useCallback(() => {
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   async function revokeSessions() {
     if (!user) return;
@@ -89,7 +100,7 @@ export default function UserDetailPage() {
     try {
       await revokeUserSessions(user.id);
       toast.success('All app sessions revoked — user must sign in again.');
-      await load();
+      load();
     } catch {
       toast.error('Could not revoke sessions');
     } finally {
