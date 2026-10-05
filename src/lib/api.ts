@@ -99,7 +99,7 @@ export async function patchUser(
   body: {
     isPremium?: boolean;
     subscriptionStatus?: string | null;
-    /** ISO datetime, or null for no fixed end (lifetime manual comp) */
+    /** ISO datetime, or null for lifetime (API stores ~100 years from grant) */
     premiumUntil?: string | null;
   }
 ): Promise<{ user: UserDetail; premiumEmailSent?: boolean }> {
