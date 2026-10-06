@@ -163,6 +163,7 @@ export interface AdminAuditLogRow {
   ipAddress: string | null;
   createdAt: string;
   admin: { id: string; email: string; name: string | null };
+  targetUser?: { id: string; email: string; name: string | null } | null;
 }
 
 export interface SubscriptionSummary {

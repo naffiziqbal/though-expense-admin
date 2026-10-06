@@ -7,10 +7,9 @@ import { fetchAuditLogs } from '@/lib/api';
 import {
   auditActionLabel,
   auditActionVariant,
-  AUDIT_ACTION_LABELS,
+  auditFilterLabel,
   formatAuditDetailsSummary,
-  formatAuditTarget,
-  compactJson,
+  formatAuditUser,
   type AuditActionFilter,
 } from '@/lib/audit-format';
 import type { AdminAuditLogRow } from '@/lib/types';
@@ -87,7 +86,7 @@ export default function AuditPage() {
             <SelectContent>
               {ACTION_FILTERS.map((key) => (
                 <SelectItem key={key} value={key}>
-                  {key === 'all' ? 'All actions' : auditActionLabel(key)}
+                  {key === 'all' ? 'All actions' : auditFilterLabel(key)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -105,7 +104,7 @@ export default function AuditPage() {
             <Skeleton className="h-64 w-full" />
           ) : visibleItems.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {actionFilter === 'all' ? 'No audit entries yet.' : 'No entries for this action on this page.'}
+              {actionFilter === 'all' ? 'No audit entries yet.' : 'No entries for this filter on this page.'}
             </p>
           ) : (
             <div className="rounded-md border">
@@ -113,51 +112,43 @@ export default function AuditPage() {
                 <TableHeader>
                   <TableRow>
                     <TableHead className="w-[7.5rem]">Time</TableHead>
-                    <TableHead className="min-w-[10rem]">Admin</TableHead>
-                    <TableHead className="w-[9rem]">Action</TableHead>
-                    <TableHead className="w-[9rem]">Target</TableHead>
+                    <TableHead className="min-w-[11rem]">User</TableHead>
+                    <TableHead className="min-w-[9rem]">Action</TableHead>
                     <TableHead>Details</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {visibleItems.map((row) => {
-                    const target = formatAuditTarget(row);
+                    const user = formatAuditUser(row);
                     const summary = formatAuditDetailsSummary(row);
-                    const raw = row.metadata ? compactJson(row.metadata) : null;
                     return (
                       <TableRow key={row.id}>
                         <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
                           {format(new Date(row.createdAt), 'MMM d HH:mm')}
                         </TableCell>
-                        <TableCell className="text-sm">{row.admin.email}</TableCell>
                         <TableCell>
-                          <Badge variant={auditActionVariant(row.action)} className="font-normal">
-                            {row.action}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {target.href ? (
-                            <Link
-                              href={target.href}
-                              className="font-mono text-xs text-primary underline-offset-4 hover:underline"
-                            >
-                              {target.label}
+                          {user.href ? (
+                            <Link href={user.href} className="block hover:underline underline-offset-4">
+                              <span className="text-sm font-medium text-foreground">{user.primary}</span>
+                              {user.secondary ? (
+                                <span className="block text-xs text-muted-foreground">{user.secondary}</span>
+                              ) : null}
                             </Link>
                           ) : (
-                            <span className="font-mono text-xs text-muted-foreground">{target.label}</span>
+                            <div>
+                              <span className="text-sm font-medium text-foreground">{user.primary}</span>
+                              {user.secondary ? (
+                                <span className="block text-xs text-muted-foreground">{user.secondary}</span>
+                              ) : null}
+                            </div>
                           )}
                         </TableCell>
-                        <TableCell className="max-w-md">
-                          <p className="text-sm text-foreground">{summary}</p>
-                          {raw && raw !== summary ? (
-                            <p
-                              className="mt-1 truncate font-mono text-[11px] text-muted-foreground"
-                              title={raw}
-                            >
-                              {raw}
-                            </p>
-                          ) : null}
+                        <TableCell>
+                          <Badge variant={auditActionVariant(row.action)} className="font-normal">
+                            {auditActionLabel(row)}
+                          </Badge>
                         </TableCell>
+                        <TableCell className="max-w-md text-sm text-muted-foreground">{summary}</TableCell>
                       </TableRow>
                     );
                   })}
@@ -176,12 +167,6 @@ export default function AuditPage() {
               Next
             </Button>
           </div>
-          <p className="text-xs text-muted-foreground">
-            Logged actions:{' '}
-            {Object.entries(AUDIT_ACTION_LABELS)
-              .map(([k, v]) => `${k} (${v})`)
-              .join(' · ')}
-          </p>
         </CardContent>
       </Card>
     </div>
