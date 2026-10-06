@@ -58,11 +58,6 @@ export default function AuditPage() {
     };
   }, [page]);
 
-  useEffect(() => {
-    setPage(1);
-    setLoadedPage(0);
-  }, [actionFilter]);
-
   const visibleItems = useMemo(() => {
     if (actionFilter === 'all') return items;
     return items.filter((row) => row.action === actionFilter);
@@ -78,7 +73,14 @@ export default function AuditPage() {
           </p>
         </div>
         <div className="w-full sm:w-56">
-          <Select value={actionFilter} onValueChange={(v) => setActionFilter(v as AuditActionFilter)}>
+          <Select
+            value={actionFilter}
+            onValueChange={(v) => {
+              setActionFilter(v as AuditActionFilter);
+              setPage(1);
+              setLoadedPage(0);
+            }}
+          >
             <SelectTrigger aria-label="Filter by action">
               <SelectValue placeholder="All actions" />
             </SelectTrigger>
