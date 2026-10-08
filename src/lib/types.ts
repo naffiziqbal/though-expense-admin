@@ -91,17 +91,38 @@ export interface AiUsageResponse {
   fallbacks: Record<string, number>;
 }
 
+export interface AiUsageStats {
+  calls: number;
+  tokens: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** Estimated USD at Gemini paid-tier list price */
+  costUsd: number;
+}
+
 export interface UserAiUsageResponse {
   days: number;
   note?: string;
-  totals: { calls: number; tokens: number };
-  byKind: Record<string, { calls: number; tokens: number }>;
+  totals: AiUsageStats & { legacyCostUsd: number; activeDays: number };
+  byKind: Record<string, AiUsageStats>;
+  byModel: Record<string, AiUsageStats & { priced: boolean }>;
   series: Array<{
     date: string;
     totalCalls: number;
     totalTokens: number;
-    byKind: Record<string, { calls: number; tokens: number }>;
+    costUsd: number;
+    byKind: Record<string, AiUsageStats>;
   }>;
+  lifetime: {
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    costUsd: number;
+    since: string | null;
+  } | null;
+  /** Last 12 months from the permanent rollup, oldest first */
+  monthly: Array<{ month: string; calls: number; costUsd: number }>;
+  pricing: Record<string, { input: number; output: number }>;
 }
 
 export interface QueueMonitorResponse {
@@ -210,6 +231,8 @@ export interface UserDetail extends Omit<UserListItem, '_count'> {
   tokenVersion?: number;
   updatedAt: string;
   lastExpenseAt?: string | null;
+  /** Last authenticated app request (hourly precision; null before tracking started) */
+  lastActiveAt?: string | null;
   subscription?: SubscriptionSummary;
   premiumAccess?: PremiumAccess;
   subscriptionDrift?: string | null;
@@ -223,4 +246,44 @@ export interface UserDetail extends Omit<UserListItem, '_count'> {
     deviceTokens: number;
     recurringRules: number;
   };
+}
+
+export interface SystemHealth {
+  /** down = database unreachable; degraded = Redis down or migrations not fully applied */
+  status: 'ok' | 'degraded' | 'down';
+  timestamp: string;
+  uptime: number;
+  nodeEnv: string;
+  redis?: { ok: boolean; message: string };
+  database: { ok: boolean; latencyMs: number | null; version: string | null; message?: string };
+  migrations: {
+    total: number;
+    applied: number;
+    pending: string[];
+    failed: string[];
+    latestApplied: { name: string; appliedAt: string } | null;
+    historyMissing: boolean;
+  } | null;
+  deploy: {
+    commit: string | null;
+    commitMessage: string | null;
+    committedAt: string | null;
+    startedAt: string;
+  };
+  /** null when alert state couldn't be read (Redis down) */
+  alerts: {
+    telegramConfigured: boolean;
+    envLabel: string;
+    monitorLastRun: { at: string; checks: number; firing: number } | null;
+    firing: Array<{ key: string; title: string; severity: 'critical' | 'warning' | 'info'; since: string }>;
+  } | null;
+}
+
+export interface SystemBackups {
+  configured: boolean;
+  bucket: string | null;
+  total: number;
+  items: Array<{ key: string; fileName: string; sizeBytes: number; createdAt: string }>;
+  /** From the backup script's marker file on the API host; null if not readable there */
+  lastSuccessAt: string | null;
 }

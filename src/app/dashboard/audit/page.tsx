@@ -34,6 +34,7 @@ const ACTION_FILTERS: AuditActionFilter[] = [
   'user.ban',
   'user.reactivate',
   'billing.reconcile_stale_premium',
+  'backup.download_link',
 ];
 
 export default function AuditPage() {

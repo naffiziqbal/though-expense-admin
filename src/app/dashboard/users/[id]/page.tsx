@@ -6,11 +6,10 @@ import { useParams } from 'next/navigation';
 import { addMonths, addDays, format, formatDistanceToNow } from 'date-fns';
 import { toast } from 'sonner';
 import { AlertTriangle, ChevronRight, Copy, RefreshCw } from 'lucide-react';
-import { fetchUser, fetchUserAiUsage, moderateUser, patchUser, revokeUserSessions } from '@/lib/api';
+import { fetchUser, moderateUser, patchUser, revokeUserSessions } from '@/lib/api';
 import type {
   AccountModerationStatus,
   PremiumAccess,
-  UserAiUsageResponse,
   UserDetail,
   UserRevenueCatLookup,
 } from '@/lib/types';
@@ -30,6 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { UserAiCost } from '@/components/user-ai-cost';
 import { cn } from '@/lib/utils';
 
 function initials(name: string | null, email: string): string {
@@ -143,8 +143,6 @@ export default function UserDetailPage() {
   const [modAction, setModAction] = useState<'suspend' | 'ban'>('suspend');
   const [modNote, setModNote] = useState('');
   const [modSaving, setModSaving] = useState(false);
-  const [aiUsage, setAiUsage] = useState<UserAiUsageResponse | null>(null);
-  const [aiUsageKey, setAiUsageKey] = useState('');
 
   function openGrantModal() {
     setGrantLifetime(false);
@@ -196,26 +194,6 @@ export default function UserDetailPage() {
       cancelled = true;
     };
   }, [id, refreshKey]);
-
-  useEffect(() => {
-    if (!id || loadedKey !== `${id}:${refreshKey}`) return;
-    let cancelled = false;
-    const key = `${id}:${refreshKey}`;
-    fetchUserAiUsage(id, 30)
-      .then((d) => {
-        if (cancelled) return;
-        setAiUsage(d);
-        setAiUsageKey(key);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setAiUsage(null);
-        setAiUsageKey(key);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [id, refreshKey, loadedKey]);
 
   const reload = useCallback(() => setRefreshKey((k) => k + 1), []);
 
@@ -317,8 +295,8 @@ export default function UserDetailPage() {
               Joined {formatDistanceToNow(new Date(user.createdAt), { addSuffix: true })}
               {' · '}
               {user.currency}
-              {user.lastExpenseAt
-                ? ` · Last activity ${formatDistanceToNow(new Date(user.lastExpenseAt), { addSuffix: true })}`
+              {user.lastActiveAt ?? user.lastExpenseAt
+                ? ` · Last activity ${formatDistanceToNow(new Date((user.lastActiveAt ?? user.lastExpenseAt)!), { addSuffix: true })}`
                 : ''}
             </p>
           </div>
@@ -553,71 +531,13 @@ export default function UserDetailPage() {
                 </div>
               ))}
             </div>
+            <Field label="Last active">
+              {user.lastActiveAt ? fmt(user.lastActiveAt) : 'Not recorded yet'}
+            </Field>
             <Field label="Last expense">{user.lastExpenseAt ? fmt(user.lastExpenseAt) : 'Never'}</Field>
           </Panel>
 
-          <Panel
-            title="AI usage (last 30 days)"
-            description={
-              aiUsage?.note ??
-              'Successful Gemini calls and token totals per user (Redis, ~95 day retention).'
-            }
-          >
-            {aiUsageKey !== `${id}:${refreshKey}` ? (
-              <p className="py-4 text-sm text-muted-foreground">Loading AI metrics…</p>
-            ) : !aiUsage ? (
-              <p className="py-4 text-sm text-muted-foreground">Could not load AI metrics.</p>
-            ) : (
-              <>
-                <div className="grid grid-cols-2 gap-3 py-4 sm:max-w-md">
-                  <div className="rounded-md bg-muted/40 px-3 py-2">
-                    <p className="text-xs text-muted-foreground">AI calls</p>
-                    <p className="text-lg font-semibold tabular-nums">
-                      {aiUsage.totals.calls.toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="rounded-md bg-muted/40 px-3 py-2">
-                    <p className="text-xs text-muted-foreground">Tokens (est.)</p>
-                    <p className="text-lg font-semibold tabular-nums">
-                      {aiUsage.totals.tokens.toLocaleString()}
-                    </p>
-                  </div>
-                </div>
-                {Object.keys(aiUsage.byKind).length === 0 ? (
-                  <p className="pb-4 text-sm text-muted-foreground">
-                    No AI calls recorded for this window yet (tracking starts after server deploy).
-                  </p>
-                ) : (
-                  <div className="-mx-4 overflow-x-auto sm:-mx-5">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Feature</TableHead>
-                          <TableHead className="text-right">Calls</TableHead>
-                          <TableHead className="text-right">Tokens</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {Object.entries(aiUsage.byKind)
-                          .sort(([, a], [, b]) => b.calls - a.calls)
-                          .map(([kind, stats]) => (
-                            <TableRow key={kind}>
-                              <TableCell className="font-mono text-xs">{kind.replace(/_/g, ' ')}</TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {stats.calls.toLocaleString()}
-                              </TableCell>
-                              <TableCell className="text-right tabular-nums">
-                                {stats.tokens.toLocaleString()}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                )}
-              </>
-            )}
-          </Panel>
+          <UserAiCost userId={user.id} refreshKey={refreshKey} />
         </TabsContent>
 
         <TabsContent value="webhooks" className="mt-6">

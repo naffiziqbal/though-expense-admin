@@ -11,6 +11,7 @@ export const AUDIT_ACTION_FILTER_LABELS: Record<string, string> = {
   'user.reactivate': 'Restorations',
   'user.revoke_sessions': 'Session revokes',
   'billing.reconcile_stale_premium': 'Billing maintenance',
+  'backup.download_link': 'Backup downloads',
 };
 
 export function auditFilterLabel(action: string): string {
@@ -36,6 +37,8 @@ export function auditActionLabel(row: AdminAuditLogRow): string {
       return 'Signed out everywhere';
     case 'billing.reconcile_stale_premium':
       return 'Cleared stale premium';
+    case 'backup.download_link':
+      return 'Created backup download link';
     default:
       return action.replace(/[._]/g, ' ');
   }
@@ -47,6 +50,7 @@ export function auditActionVariant(
   if (action === 'user.ban' || action === 'user.suspend') return 'destructive';
   if (action === 'user.revoke_sessions') return 'secondary';
   if (action === 'billing.reconcile_stale_premium') return 'outline';
+  if (action === 'backup.download_link') return 'destructive';
   if (action === 'user.update') return 'default';
   return 'default';
 }

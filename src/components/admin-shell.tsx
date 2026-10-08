@@ -1,11 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { fetchMe } from '@/lib/api';
+import { toast } from 'sonner';
 import { adminNavGroups, adminNavIsActive, adminPageMeta } from '@/lib/admin-nav';
-import { LayoutDashboard, LogOut, Menu } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, MonitorOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -76,10 +76,12 @@ function SidebarFooter({
   email,
   name,
   onSignOut,
+  onSignOutAll,
 }: {
   email: string;
   name: string | null | undefined;
   onSignOut: () => void;
+  onSignOutAll: () => void;
 }) {
   return (
     <div className="shrink-0 space-y-2 border-t border-sidebar-border p-3">
@@ -103,6 +105,15 @@ function SidebarFooter({
         <LogOut className="size-4" />
         Sign out
       </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+        onClick={onSignOutAll}
+      >
+        <MonitorOff className="size-4" />
+        Sign out everywhere
+      </Button>
     </div>
   );
 }
@@ -112,11 +123,13 @@ function DesktopSidebar({
   email,
   name,
   onSignOut,
+  onSignOutAll,
 }: {
   pathname: string;
   email: string;
   name: string | null | undefined;
   onSignOut: () => void;
+  onSignOutAll: () => void;
 }) {
   return (
     <aside
@@ -129,7 +142,7 @@ function DesktopSidebar({
       <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
         <NavLinks pathname={pathname} />
       </nav>
-      <SidebarFooter email={email} name={name} onSignOut={onSignOut} />
+      <SidebarFooter email={email} name={name} onSignOut={onSignOut} onSignOutAll={onSignOutAll} />
     </aside>
   );
 }
@@ -137,27 +150,30 @@ function DesktopSidebar({
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, setUser } = useAuthStore();
+  const { user, logout, logoutEverywhere } = useAuthStore();
   const [mobileOpen, setMobileOpen] = useState(false);
   const page = adminPageMeta(pathname);
 
-  useEffect(() => {
-    if (user) return;
-    fetchMe()
-      .then((u) => setUser({ id: u.id, email: u.email, name: u.name ?? null }))
-      .catch(() => {});
-  }, [user, setUser]);
-
-  function signOut() {
-    logout();
+  async function signOut() {
+    await logout();
     router.replace('/login');
+  }
+
+  async function signOutEverywhere() {
+    try {
+      await logoutEverywhere();
+      toast.success('Signed out of all sessions');
+      router.replace('/login');
+    } catch {
+      toast.error('Could not sign out other sessions');
+    }
   }
 
   const email = user?.email ?? '…';
 
   return (
     <div className="min-h-svh bg-muted/30">
-      <DesktopSidebar pathname={pathname} email={email} name={user?.name} onSignOut={signOut} />
+      <DesktopSidebar pathname={pathname} email={email} name={user?.name} onSignOut={signOut} onSignOutAll={signOutEverywhere} />
 
       <div className={cn('flex min-h-svh min-w-0 flex-col md:ml-60')}>
         <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
@@ -189,6 +205,18 @@ export function AdminShell({ children }: { children: React.ReactNode }) {
                 >
                   <LogOut className="size-4" />
                   Sign out
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full justify-start gap-2 text-sidebar-foreground/60"
+                  onClick={() => {
+                    setMobileOpen(false);
+                    void signOutEverywhere();
+                  }}
+                >
+                  <MonitorOff className="size-4" />
+                  Sign out everywhere
                 </Button>
               </div>
             </SheetContent>
