@@ -1,175 +1,146 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense } from 'react';
 import Link from 'next/link';
-import { format } from 'date-fns';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { fetchAuditLogs } from '@/lib/api';
 import {
   auditActionLabel,
-  auditActionVariant,
+  auditActionTone,
   auditFilterLabel,
   formatAuditDetailsSummary,
   formatAuditUser,
-  type AuditActionFilter,
+  AUDIT_ACTION_FILTERS,
 } from '@/lib/audit-format';
-import type { AdminAuditLogRow } from '@/lib/types';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { dateTime, shortTime } from '@/lib/format';
+import { useLoad } from '@/lib/use-load';
+import { Empty, LoadError, PageHeader, Pager, RefreshButton, Rows, Tag } from '@/components/console';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 
-const ACTION_FILTERS: AuditActionFilter[] = [
-  'all',
-  'user.update',
-  'user.revoke_sessions',
-  'user.suspend',
-  'user.ban',
-  'user.reactivate',
-  'billing.reconcile_stale_premium',
-  'backup.download_link',
-];
+const LIMIT = 30;
 
-export default function AuditPage() {
-  const [items, setItems] = useState<AdminAuditLogRow[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [loadedPage, setLoadedPage] = useState(0);
-  const [actionFilter, setActionFilter] = useState<AuditActionFilter>('all');
-  const loading = loadedPage !== page;
+function AuditContent() {
+  const params = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const action = AUDIT_ACTION_FILTERS.includes(params.get('action') ?? '') ? (params.get('action') as string) : 'all';
+  const page = Math.max(1, Number(params.get('page')) || 1);
+  const logs = useLoad(() => fetchAuditLogs(page, action), `${page}|${action}`);
 
-  useEffect(() => {
-    let cancelled = false;
-    fetchAuditLogs(page).then((data) => {
-      if (cancelled) return;
-      setItems(data.items);
-      setPages(data.pagination.pages);
-      setLoadedPage(page);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [page]);
+  function setParams(next: { action?: string; page?: number }) {
+    const p = new URLSearchParams(params.toString());
+    if (next.action !== undefined) {
+      if (next.action === 'all') p.delete('action');
+      else p.set('action', next.action);
+    }
+    if (next.page && next.page > 1) p.set('page', String(next.page));
+    else p.delete('page');
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
 
-  const visibleItems = useMemo(() => {
-    if (actionFilter === 'all') return items;
-    return items.filter((row) => row.action === actionFilter);
-  }, [items, actionFilter]);
+  // Guard for an API that predates the action filter: never show rows that don't match.
+  const rows = logs.data?.items.filter((r) => action === 'all' || r.action === action) ?? [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Audit log</h1>
-          <p className="text-sm text-muted-foreground">
-            Premium comp changes, moderation, session revokes, and billing maintenance.
-          </p>
-        </div>
-        <div className="w-full sm:w-56">
-          <Select
-            value={actionFilter}
-            onValueChange={(v) => {
-              setActionFilter(v as AuditActionFilter);
-              setPage(1);
-              setLoadedPage(0);
-            }}
-          >
-            <SelectTrigger aria-label="Filter by action">
-              <SelectValue placeholder="All actions" />
-            </SelectTrigger>
-            <SelectContent>
-              {ACTION_FILTERS.map((key) => (
-                <SelectItem key={key} value={key}>
-                  {key === 'all' ? 'All actions' : auditFilterLabel(key)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="Audit log"
+        description="Every change made from this console: premium grants and revokes, moderation, sign-outs, billing clean-ups and backup downloads."
+        actions={
+          <>
+            <Select value={action} onValueChange={(v) => setParams({ action: String(v) })}>
+              <SelectTrigger aria-label="Filter by action" className="w-52 bg-card">
+                <SelectValue>{action === 'all' ? 'All actions' : auditFilterLabel(action)}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {['all', ...AUDIT_ACTION_FILTERS].map((key) => (
+                  <SelectItem key={key} value={key}>
+                    {key === 'all' ? 'All actions' : auditFilterLabel(key)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <RefreshButton onClick={logs.reload} busy={logs.refreshing} />
+          </>
+        }
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Recent activity</CardTitle>
-          <CardDescription>Premium changes and session revokes are recorded here.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {loading ? (
-            <Skeleton className="h-64 w-full" />
-          ) : visibleItems.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {actionFilter === 'all' ? 'No audit entries yet.' : 'No entries for this filter on this page.'}
-            </p>
+      {logs.error ? (
+        <LoadError what="the audit log" message={logs.error} onRetry={logs.reload} />
+      ) : (
+        <div className="overflow-hidden rounded-xl border bg-card">
+          {logs.loading || !logs.data ? (
+            <Rows n={10} />
+          ) : rows.length === 0 ? (
+            <Empty title={action === 'all' ? 'Nothing recorded yet' : `No ${auditFilterLabel(action).toLowerCase()} recorded`}>
+              {action === 'all' ? 'Changes made from this console will show up here.' : 'Pick another action, or show all actions.'}
+            </Empty>
           ) : (
-            <div className="rounded-md border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[7.5rem]">Time</TableHead>
-                    <TableHead className="min-w-[11rem]">User</TableHead>
-                    <TableHead className="min-w-[9rem]">Action</TableHead>
-                    <TableHead>Details</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visibleItems.map((row) => {
-                    const user = formatAuditUser(row);
-                    const summary = formatAuditDetailsSummary(row);
-                    return (
-                      <TableRow key={row.id}>
-                        <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
-                          {format(new Date(row.createdAt), 'MMM d HH:mm')}
-                        </TableCell>
-                        <TableCell>
-                          {user.href ? (
-                            <Link href={user.href} className="block hover:underline underline-offset-4">
-                              <span className="text-sm font-medium text-foreground">{user.primary}</span>
-                              {user.secondary ? (
-                                <span className="block text-xs text-muted-foreground">{user.secondary}</span>
-                              ) : null}
-                            </Link>
-                          ) : (
-                            <div>
-                              <span className="text-sm font-medium text-foreground">{user.primary}</span>
-                              {user.secondary ? (
-                                <span className="block text-xs text-muted-foreground">{user.secondary}</span>
-                              ) : null}
-                            </div>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant={auditActionVariant(row.action)} className="font-normal">
-                            {auditActionLabel(row)}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="max-w-md text-sm text-muted-foreground">{summary}</TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>What</TableHead>
+                  <TableHead>Affected</TableHead>
+                  <TableHead className="hidden lg:table-cell">Details</TableHead>
+                  <TableHead className="hidden md:table-cell">By</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => {
+                  const target = formatAuditUser(row);
+                  const summary = formatAuditDetailsSummary(row);
+                  return (
+                    <TableRow key={row.id} className="align-top">
+                      <TableCell className="num text-muted-foreground" title={dateTime(row.createdAt)}>
+                        {shortTime(row.createdAt)}
+                      </TableCell>
+                      <TableCell>
+                        <Tag tone={auditActionTone(row.action)}>{auditActionLabel(row)}</Tag>
+                        <span className="mt-1 block max-w-[18rem] text-[13px] whitespace-normal text-muted-foreground lg:hidden">{summary}</span>
+                      </TableCell>
+                      <TableCell className="max-w-[16rem]">
+                        {target.href ? (
+                          <Link href={target.href} className="block truncate font-medium hover:underline">
+                            {target.primary}
+                          </Link>
+                        ) : (
+                          <span className="block truncate font-medium">{target.primary}</span>
+                        )}
+                        {target.secondary ? <span className="block truncate text-xs text-muted-foreground">{target.secondary}</span> : null}
+                      </TableCell>
+                      <TableCell className="hidden max-w-sm whitespace-normal text-muted-foreground lg:table-cell">{summary}</TableCell>
+                      <TableCell className="hidden max-w-[12rem] truncate text-muted-foreground md:table-cell" title={row.ipAddress ? `From ${row.ipAddress}` : undefined}>
+                        {row.admin.name || row.admin.email}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-              Previous
-            </Button>
-            <span className="text-sm text-muted-foreground">
-              Page {page} of {pages}
-            </span>
-            <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-              Next
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
+          {logs.data ? (
+            <Pager
+              page={page}
+              pages={logs.data.pagination.pages}
+              total={logs.data.pagination.total}
+              limit={LIMIT}
+              noun="entries"
+              onPage={(p) => setParams({ page: p })}
+            />
+          ) : null}
+        </div>
+      )}
+    </>
+  );
+}
+
+export default function AuditPage() {
+  return (
+    <Suspense fallback={<Rows n={10} />}>
+      <AuditContent />
+    </Suspense>
   );
 }

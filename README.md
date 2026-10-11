@@ -15,7 +15,7 @@ cd admin
 pnpm install
 cp .env.example .env.local
 # NEXT_PUBLIC_API_URL=http://localhost:7100
-pnpm dev   # http://localhost:3020
+pnpm dev   # http://localhost:3022
 ```
 
 ### Create an admin account (on the server)
@@ -36,14 +36,17 @@ For **RevenueCat entitlement checks** on Operations, set `REVENUECAT_SECRET_API_
 
 | Route | Purpose |
 |-------|---------|
-| `/dashboard` | KPIs: users, premium, signups, expenses, devices |
-| `/dashboard/growth` | Daily signup chart |
-| `/dashboard/users` | Search and paginate app users |
-| `/dashboard/subscriptions` | Premium counts |
-| `/dashboard/billing` | Webhook log + subscription drift heuristics |
-| `/dashboard/operations` | AI usage, BullMQ, RAG/Pinecone, RevenueCat vs DB |
-| `/dashboard/audit` | Admin action audit log |
-| `/dashboard/system` | API health + Redis ping |
+| `/dashboard` | Needs-attention list (alerts, drift, failed jobs, stale backups, AI cost flags), then key figures |
+| `/dashboard/users` | Search and filter accounts; search, filter and page live in the URL |
+| `/dashboard/users/[id]` | Plan, RevenueCat comparison, usage, AI cost, webhooks; grant/revoke premium, moderation |
+| `/dashboard/subscriptions` | Premium segments and status breakdown |
+| `/dashboard/growth` | Daily signups with period-over-period change |
+| `/dashboard/billing` | Clear stale premium, inconsistent accounts, RevenueCat webhook log |
+| `/dashboard/operations` | AI usage, AI cost per user, job queues, RevenueCat check (on demand), search index |
+| `/dashboard/system` | Service health, deployed version, migrations, alerts, backups |
+| `/dashboard/audit` | Every console action, filterable by action (server-side) |
+
+The top bar finds any user by email or name (press `/`). Sidebar counts show open attention items per section; they refresh every 5 minutes.
 
 ## Security
 

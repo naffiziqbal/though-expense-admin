@@ -1,63 +1,21 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { format } from 'date-fns';
 import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from 'recharts';
 import { fetchUserAiUsage } from '@/lib/api';
+import { aiKindLabel, compact, count, pct, usd } from '@/lib/format';
+import { useLoad } from '@/lib/use-load';
 import type { AiUsageStats, UserAiUsageResponse } from '@/lib/types';
-import { Badge } from '@/components/ui/badge';
+import { Empty, Figure, LoadError, Section, Tag } from '@/components/console';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { RangeTabs } from '@/components/range-tabs';
 
 const chartConfig = {
   costUsd: { label: 'Cost', color: 'var(--chart-1)' },
 } satisfies ChartConfig;
-
-const KIND_LABELS: Record<string, string> = {
-  parse: 'Expense parsing',
-  parse_async: 'Expense parsing (background)',
-  ocr: 'Receipt / document OCR',
-  insights: 'Insights',
-  briefing: 'Weekly briefing',
-  advisor_ask: 'Advisor — ask',
-  advisor_why: 'Advisor — why',
-  advisor_savings: 'Advisor — savings',
-  search: 'Smart search',
-  embedding: 'Embeddings (RAG)',
-  budget_category: 'Budget parsing',
-};
-
-export function kindLabel(kind: string): string {
-  return KIND_LABELS[kind] ?? kind.replace(/_/g, ' ');
-}
-
-/** AI costs per user are fractions of a cent, so show enough precision to be useful. */
-export function usd(n: number): string {
-  if (!n) return '$0.00';
-  if (n >= 1) return `$${n.toFixed(2)}`;
-  if (n >= 0.01) return `$${n.toFixed(3)}`;
-  if (n < 0.000001) return '<$0.000001';
-  return `$${n.toFixed(6).replace(/0+$/, '')}`;
-}
-
-const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-
-function pct(part: number, whole: number): string {
-  if (!whole) return '—';
-  return `${Math.round((part / whole) * 100)}%`;
-}
-
-function Kpi({ label, value, hint }: { label: string; value: string; hint?: string }) {
-  return (
-    <div className="rounded-md bg-muted/40 px-3 py-2">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-lg font-semibold tabular-nums">{value}</p>
-      {hint ? <p className="text-xs text-muted-foreground">{hint}</p> : null}
-    </div>
-  );
-}
 
 function UsageTable({
   rows,
@@ -71,102 +29,55 @@ function UsageTable({
   renderName: (name: string, stats: AiUsageStats & { priced?: boolean }) => React.ReactNode;
 }) {
   return (
-    <div className="-mx-4 overflow-x-auto sm:-mx-5">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>{nameHeader}</TableHead>
-            <TableHead className="text-right">Calls</TableHead>
-            <TableHead className="text-right">Input tok.</TableHead>
-            <TableHead className="text-right">Output tok.</TableHead>
-            <TableHead className="text-right">Cost</TableHead>
-            <TableHead className="text-right">Share</TableHead>
-            <TableHead className="text-right">Per call</TableHead>
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>{nameHeader}</TableHead>
+          <TableHead className="text-right">Calls</TableHead>
+          <TableHead className="hidden text-right sm:table-cell">Tokens in</TableHead>
+          <TableHead className="hidden text-right sm:table-cell">Tokens out</TableHead>
+          <TableHead className="text-right">Cost</TableHead>
+          <TableHead className="text-right">Share</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map(([name, s]) => (
+          <TableRow key={name}>
+            <TableCell>{renderName(name, s)}</TableCell>
+            <TableCell className="num text-right">{count(s.calls)}</TableCell>
+            <TableCell className="num hidden text-right text-muted-foreground sm:table-cell">{compact(s.inputTokens)}</TableCell>
+            <TableCell className="num hidden text-right text-muted-foreground sm:table-cell">{compact(s.outputTokens)}</TableCell>
+            <TableCell className="num text-right font-medium">{usd(s.costUsd)}</TableCell>
+            <TableCell className="num text-right text-muted-foreground">{pct(s.costUsd, totalCost)}</TableCell>
           </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map(([name, s]) => (
-            <TableRow key={name}>
-              <TableCell>{renderName(name, s)}</TableCell>
-              <TableCell className="text-right tabular-nums">{s.calls.toLocaleString()}</TableCell>
-              <TableCell className="text-right tabular-nums">{compact.format(s.inputTokens)}</TableCell>
-              <TableCell className="text-right tabular-nums">{compact.format(s.outputTokens)}</TableCell>
-              <TableCell className="text-right font-medium tabular-nums">{usd(s.costUsd)}</TableCell>
-              <TableCell className="text-right tabular-nums text-muted-foreground">
-                {pct(s.costUsd, totalCost)}
-              </TableCell>
-              <TableCell className="text-right tabular-nums text-muted-foreground">
-                {s.calls ? usd(s.costUsd / s.calls) : '—'}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+        ))}
+      </TableBody>
+    </Table>
   );
 }
 
+/** Estimated Gemini spend for one user. */
 export function UserAiCost({ userId, refreshKey }: { userId: string; refreshKey: number }) {
   const [days, setDays] = useState(30);
-  const [data, setData] = useState<UserAiUsageResponse | null>(null);
-  const [loadedKey, setLoadedKey] = useState('');
-  const key = `${userId}:${refreshKey}:${days}`;
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchUserAiUsage(userId, days)
-      .then((d) => {
-        if (cancelled) return;
-        setData(d);
-        setLoadedKey(key);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setData(null);
-        setLoadedKey(key);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, days, key]);
-
-  const loading = loadedKey !== key;
+  const usage = useLoad(() => fetchUserAiUsage(userId, days), `${userId}:${refreshKey}:${days}`);
 
   return (
-    <section className="rounded-lg border bg-background">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b px-4 py-3 sm:px-5">
-        <div>
-          <h2 className="text-sm font-semibold">AI cost</h2>
-          <p className="mt-0.5 max-w-xl text-xs text-muted-foreground">
-            {data?.note ?? 'Estimated Gemini spend for this user, per feature and per model.'}
-          </p>
+    <Section
+      title="AI cost"
+      description={usage.data?.note ?? 'Estimated Gemini spend for this user at paid-tier list price.'}
+      actions={<RangeTabs value={days} onChange={setDays} />}
+    >
+      {usage.loading ? (
+        <div className="space-y-4">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-[180px] w-full" />
         </div>
-        <Tabs value={String(days)} onValueChange={(v) => setDays(Number(v))}>
-          <TabsList>
-            <TabsTrigger value="7">7d</TabsTrigger>
-            <TabsTrigger value="30">30d</TabsTrigger>
-            <TabsTrigger value="90">90d</TabsTrigger>
-          </TabsList>
-        </Tabs>
-      </div>
-
-      <div className="space-y-5 px-4 py-4 sm:px-5">
-        {loading ? (
-          <>
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <Skeleton key={i} className="h-[72px]" />
-              ))}
-            </div>
-            <Skeleton className="h-[200px] w-full" />
-          </>
-        ) : !data ? (
-          <p className="text-sm text-muted-foreground">Could not load AI cost.</p>
-        ) : (
-          <CostBody data={data} />
-        )}
-      </div>
-    </section>
+      ) : usage.error || !usage.data ? (
+        <LoadError what="AI cost" message={usage.error ?? ''} onRetry={usage.reload} />
+      ) : (
+        <CostBody data={usage.data} />
+      )}
+    </Section>
   );
 }
 
@@ -174,122 +85,81 @@ function CostBody({ data }: { data: UserAiUsageResponse }) {
   const { totals, lifetime, days } = data;
   const kinds = Object.entries(data.byKind).sort(([, a], [, b]) => b.costUsd - a.costUsd);
   const models = Object.entries(data.byModel).sort(([, a], [, b]) => b.costUsd - a.costUsd);
-  const topKind = kinds[0];
+  const top = kinds[0];
   const monthly = (totals.costUsd / days) * 30;
 
   if (totals.calls === 0 && !lifetime?.calls) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        No AI calls recorded for this user in the last {days} days.
-      </p>
-    );
+    return <Empty title={`No AI calls in the last ${days} days`}>This user hasn&apos;t used parsing, insights or the advisor in this window.</Empty>;
   }
 
   return (
-    <>
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Kpi
-          label={`Cost · last ${days}d`}
-          value={usd(totals.costUsd)}
-          hint={`${totals.calls.toLocaleString()} calls · ${compact.format(totals.tokens)} tokens`}
+    <div className="space-y-6">
+      <div className="grid grid-cols-2 gap-x-6 gap-y-5 lg:grid-cols-4">
+        <Figure label={`Last ${days} days`} value={usd(totals.costUsd)} note={`${count(totals.calls)} calls`} />
+        <Figure label="Per month at this pace" value={usd(monthly)} />
+        <Figure
+          label="Per call"
+          value={totals.calls ? usd(totals.costUsd / totals.calls) : '–'}
+          note={totals.activeDays ? `${totals.activeDays} active days` : undefined}
         />
-        <Kpi
-          label="Projected / month"
-          value={usd(monthly)}
-          hint={`at the ${days}-day pace`}
-        />
-        <Kpi
-          label="Avg per call"
-          value={totals.calls ? usd(totals.costUsd / totals.calls) : '—'}
-          hint={
-            totals.activeDays
-              ? `${usd(totals.costUsd / totals.activeDays)} per active day (${totals.activeDays}d)`
-              : undefined
-          }
-        />
-        <Kpi
-          label="Lifetime cost"
-          value={lifetime ? usd(lifetime.costUsd) : '—'}
-          hint={
-            lifetime?.since
-              ? `${lifetime.calls.toLocaleString()} calls since ${format(new Date(lifetime.since), 'MMM d, yyyy')}`
-              : 'Tracked from cost-tracking deploy'
-          }
+        <Figure
+          label="Lifetime"
+          value={lifetime ? usd(lifetime.costUsd) : '–'}
+          note={lifetime?.since ? `Since ${format(new Date(lifetime.since), 'MMM d, yyyy')}` : 'Tracked since cost tracking shipped'}
         />
       </div>
 
-      {topKind && totals.costUsd > 0 ? (
+      {top && totals.costUsd > 0 ? (
         <p className="text-sm">
-          <span className="text-muted-foreground">Top cost driver: </span>
-          <span className="font-medium">{kindLabel(topKind[0])}</span>
+          <span className="font-medium">{aiKindLabel(top[0])}</span>{' '}
           <span className="text-muted-foreground">
-            {' '}
-            — {pct(topKind[1].costUsd, totals.costUsd)} of spend over {topKind[1].calls.toLocaleString()} calls.
-            Output tokens make up {pct(totals.outputTokens, totals.tokens)} of volume.
+            drives {pct(top[1].costUsd, totals.costUsd)} of this user&apos;s AI cost. Output tokens are {pct(totals.outputTokens, totals.tokens)} of volume.
           </span>
         </p>
       ) : null}
 
-      <div>
-        <p className="mb-2 text-xs font-medium text-muted-foreground">Daily cost</p>
-        <ChartContainer config={chartConfig} className="h-[200px] w-full">
-          <BarChart data={data.series} margin={{ left: 0, right: 8 }}>
-            <CartesianGrid vertical={false} />
-            <XAxis dataKey="date" tickLine={false} axisLine={false} tickFormatter={(v) => v.slice(5)} />
-            <YAxis
-              tickLine={false}
-              axisLine={false}
-              width={56}
-              tickFormatter={(v: number) => usd(v)}
-            />
-            <ChartTooltip
-              content={
-                <ChartTooltipContent
-                  formatter={(value, _name, item) => (
-                    <div className="flex w-full justify-between gap-4">
-                      <span className="text-muted-foreground">
-                        {item.payload.totalCalls.toLocaleString()} calls
-                      </span>
-                      <span className="font-mono font-medium tabular-nums">{usd(Number(value))}</span>
-                    </div>
-                  )}
-                />
-              }
-            />
-            <Bar dataKey="costUsd" fill="var(--color-costUsd)" radius={3} />
-          </BarChart>
-        </ChartContainer>
-      </div>
+      <ChartContainer config={chartConfig} className="aspect-auto h-[180px] w-full">
+        <BarChart data={data.series} margin={{ left: 0, right: 4, top: 4 }}>
+          <CartesianGrid vertical={false} strokeDasharray="2 4" />
+          <XAxis dataKey="date" tickLine={false} axisLine={false} minTickGap={24} tickFormatter={(v: string) => v.slice(5)} />
+          <YAxis tickLine={false} axisLine={false} width={64} tickFormatter={(v: number) => usd(v)} />
+          <ChartTooltip
+            cursor={{ fill: 'var(--muted)' }}
+            content={
+              <ChartTooltipContent
+                formatter={(value, _name, item) => (
+                  <div className="flex w-full justify-between gap-4">
+                    <span className="text-muted-foreground">{count(item.payload.totalCalls)} calls</span>
+                    <span className="num font-medium">{usd(Number(value))}</span>
+                  </div>
+                )}
+              />
+            }
+          />
+          <Bar dataKey="costUsd" fill="var(--color-costUsd)" radius={[2, 2, 0, 0]} />
+        </BarChart>
+      </ChartContainer>
 
       {kinds.length > 0 ? (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">By feature</p>
-          <UsageTable
-            rows={kinds}
-            totalCost={totals.costUsd}
-            nameHeader="Feature"
-            renderName={(k) => <span className="text-sm">{kindLabel(k)}</span>}
-          />
+        <div className="-mx-5 border-t">
+          <UsageTable rows={kinds} totalCost={totals.costUsd} nameHeader="Feature" renderName={(k) => aiKindLabel(k)} />
         </div>
       ) : null}
 
       {models.length > 0 ? (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">By model</p>
+        <div className="-mx-5 border-t">
           <UsageTable
             rows={models}
             totalCost={totals.costUsd}
             nameHeader="Model"
             renderName={(m, s) => (
-              <span className="flex items-center gap-2 font-mono text-xs">
-                {m}
+              <span className="flex flex-wrap items-center gap-2">
+                <span className="font-mono text-[13px]">{m}</span>
                 {s.priced === false ? (
-                  <Badge variant="outline" className="font-sans">
-                    no price — estimated high
-                  </Badge>
+                  <Tag tone="warn" title="No list price on file, so the estimate uses a high fallback">No price on file</Tag>
                 ) : data.pricing[m] ? (
-                  <span className="font-sans text-muted-foreground">
-                    ${data.pricing[m].input}/${data.pricing[m].output} per 1M
+                  <span className="text-xs text-muted-foreground">
+                    ${data.pricing[m].input} in, ${data.pricing[m].output} out per 1M
                   </span>
                 ) : null}
               </span>
@@ -299,40 +169,37 @@ function CostBody({ data }: { data: UserAiUsageResponse }) {
       ) : null}
 
       {data.monthly?.some((m) => m.calls > 0) ? (
-        <div>
-          <p className="mb-1 text-xs font-medium text-muted-foreground">Monthly history</p>
-          <div className="-mx-4 overflow-x-auto sm:-mx-5">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Month</TableHead>
-                  <TableHead className="text-right">Calls</TableHead>
-                  <TableHead className="text-right">Cost</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {data.monthly
-                  .filter((m) => m.calls > 0)
-                  .reverse()
-                  .map((m) => (
-                    <TableRow key={m.month}>
-                      <TableCell>{format(new Date(`${m.month}-01T00:00:00`), 'MMM yyyy')}</TableCell>
-                      <TableCell className="text-right tabular-nums">{m.calls.toLocaleString()}</TableCell>
-                      <TableCell className="text-right font-medium tabular-nums">{usd(m.costUsd)}</TableCell>
-                    </TableRow>
-                  ))}
-              </TableBody>
-            </Table>
-          </div>
+        <div className="-mx-5 -mb-5 border-t">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Month</TableHead>
+                <TableHead className="text-right">Calls</TableHead>
+                <TableHead className="text-right">Cost</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.monthly
+                .filter((m) => m.calls > 0)
+                .reverse()
+                .map((m) => (
+                  <TableRow key={m.month}>
+                    <TableCell>{format(new Date(`${m.month}-01T00:00:00`), 'MMMM yyyy')}</TableCell>
+                    <TableCell className="num text-right">{count(m.calls)}</TableCell>
+                    <TableCell className="num text-right font-medium">{usd(m.costUsd)}</TableCell>
+                  </TableRow>
+                ))}
+            </TableBody>
+          </Table>
         </div>
       ) : null}
 
       {totals.legacyCostUsd > 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {usd(totals.legacyCostUsd)} of this window is estimated from older records that only stored total
-          tokens (assumed 85% input / 15% output; not attributed to a model).
+        <p className="text-[13px] text-muted-foreground">
+          {usd(totals.legacyCostUsd)} of this window comes from older records that only stored total tokens. It assumes 85% input
+          and 15% output and isn&apos;t tied to a model.
         </p>
       ) : null}
-    </>
+    </div>
   );
 }

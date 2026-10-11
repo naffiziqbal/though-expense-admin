@@ -1,52 +1,84 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useTheme } from 'next-themes';
 import { toast } from 'sonner';
-import { adminNavGroups, adminNavIsActive, adminPageMeta } from '@/lib/admin-nav';
-import { LayoutDashboard, LogOut, Menu, MonitorOff } from 'lucide-react';
+import { ChevronsUpDown, LogOut, Menu, MonitorOff } from 'lucide-react';
+import { adminNavGroups, adminNavIsActive } from '@/lib/admin-nav';
+import { attentionByPath, useAttention } from '@/lib/attention';
+import { initials } from '@/lib/format';
 import { cn } from '@/lib/utils';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { ThemeToggle } from '@/components/theme-toggle';
 import { useAuthStore } from '@/store/authStore';
+import { Confirm } from '@/components/console';
+import { UserSearch } from '@/components/user-search';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
 
-const SIDEBAR_WIDTH = 'w-60';
-
-function userInitials(name: string | null | undefined, email: string): string {
-  const base = name?.trim() || email;
-  const parts = base.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return base.slice(0, 2).toUpperCase();
+export function BrandMark({ className }: { className?: string }) {
+  return (
+    <span className={cn('flex size-8 shrink-0 items-center justify-center rounded-[9px] bg-[#0E9488]', className)} aria-hidden>
+      <svg viewBox="0 0 24 24" className="size-[18px]" fill="none" stroke="white" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 16l5-5 3.5 3.5L19 8" />
+        <path d="M14 8h5v5" />
+      </svg>
+    </span>
+  );
 }
 
 function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () => void }) {
+  const items = useAttention((s) => s.items);
+  const counts = attentionByPath(items);
+
   return (
-    <div className="flex flex-col gap-6">
-      {adminNavGroups.map((group) => (
-        <div key={group.label}>
-          <p className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-sidebar-foreground/50">
-            {group.label}
-          </p>
-          <ul className="flex flex-col gap-0.5">
+    <div className="flex flex-col gap-5">
+      {adminNavGroups.map((group, gi) => (
+        <div key={group.label ?? gi}>
+          {group.label ? (
+            <p className="mb-1 px-2.5 text-xs font-medium text-sidebar-foreground/55">{group.label}</p>
+          ) : null}
+          <ul className="flex flex-col gap-px">
             {group.items.map(({ href, label, icon: Icon }) => {
               const active = adminNavIsActive(pathname, href);
+              const c = counts[href];
               return (
                 <li key={href}>
                   <Link
                     href={href}
                     onClick={onNavigate}
+                    aria-current={active ? 'page' : undefined}
                     className={cn(
-                      'flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
+                      'flex h-9 items-center gap-2.5 rounded-md px-2.5 text-sm transition-colors',
                       active
-                        ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-[inset_2px_0_0_0_var(--sidebar-primary)]'
-                        : 'text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground'
+                        ? 'bg-sidebar-accent font-medium text-sidebar-accent-foreground shadow-[0_0_0_1px_var(--sidebar-border)]'
+                        : 'text-sidebar-foreground/75 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
                     )}
                   >
-                    <Icon className="size-4 shrink-0 opacity-80" />
-                    {label}
+                    <Icon className={cn('size-4 shrink-0', active ? 'text-primary' : 'opacity-70')} />
+                    <span className="flex-1 truncate">{label}</span>
+                    {c ? (
+                      <span
+                        className={cn(
+                          'figure min-w-5 rounded-sm px-1 text-center text-[13px] leading-5',
+                          c.tone === 'critical' ? 'bg-critical text-white dark:text-[#2a0d0a]' : 'bg-warn-soft text-warn'
+                        )}
+                        aria-label={`${c.n} need${c.n === 1 ? 's' : ''} attention`}
+                      >
+                        {c.n}
+                      </span>
+                    ) : null}
                   </Link>
                 </li>
               );
@@ -58,184 +90,161 @@ function NavLinks({ pathname, onNavigate }: { pathname: string; onNavigate?: () 
   );
 }
 
-function SidebarBrand() {
+function AccountMenu({ onSignOut, onSignOutAll }: { onSignOut: () => void; onSignOutAll: () => void }) {
+  const user = useAuthStore((s) => s.user);
+  const { theme, setTheme } = useTheme();
+  const email = user?.email ?? '';
+
   return (
-    <div className="flex h-14 shrink-0 items-center gap-2.5 border-b border-sidebar-border px-4">
-      <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-        <LayoutDashboard className="size-4" />
-      </div>
-      <div className="min-w-0 leading-tight">
-        <p className="truncate text-sm font-semibold text-sidebar-foreground">ThoughtExpense</p>
-        <p className="truncate text-[11px] text-sidebar-foreground/55">Admin console</p>
-      </div>
-    </div>
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        render={
+          <button
+            type="button"
+            className="flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-left hover:bg-sidebar-accent/60"
+          />
+        }
+      >
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-sidebar-accent text-xs font-semibold shadow-[0_0_0_1px_var(--sidebar-border)]">
+          {email ? initials(user?.name, email) : ''}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-medium">{user?.name || 'Admin'}</span>
+          <span className="block truncate text-xs text-sidebar-foreground/60">{email}</span>
+        </span>
+        <ChevronsUpDown className="size-4 shrink-0 opacity-50" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-56">
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+          <DropdownMenuRadioGroup value={theme ?? 'system'} onValueChange={(v) => setTheme(String(v))}>
+            <DropdownMenuRadioItem value="light">Light</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">Dark</DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system">Match system</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={onSignOut}>
+          <LogOut />
+          Sign out
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={onSignOutAll}>
+          <MonitorOff />
+          Sign out on all devices
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
-function SidebarFooter({
-  email,
-  name,
-  onSignOut,
-  onSignOutAll,
-}: {
-  email: string;
-  name: string | null | undefined;
-  onSignOut: () => void;
-  onSignOutAll: () => void;
-}) {
-  return (
-    <div className="shrink-0 space-y-2 border-t border-sidebar-border p-3">
-      <div className="flex items-center gap-2.5 rounded-md px-1 py-1">
-        <Avatar className="size-8">
-          <AvatarFallback className="bg-sidebar-accent text-xs text-sidebar-accent-foreground">
-            {userInitials(name, email)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="min-w-0 flex-1">
-          {name ? <p className="truncate text-sm font-medium text-sidebar-foreground">{name}</p> : null}
-          <p className="truncate text-xs text-sidebar-foreground/55">{email}</p>
-        </div>
-      </div>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        onClick={onSignOut}
-      >
-        <LogOut className="size-4" />
-        Sign out
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="w-full justify-start gap-2 text-sidebar-foreground/60 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-        onClick={onSignOutAll}
-      >
-        <MonitorOff className="size-4" />
-        Sign out everywhere
-      </Button>
-    </div>
-  );
-}
-
-function DesktopSidebar({
+function SidebarBody({
   pathname,
-  email,
-  name,
+  onNavigate,
   onSignOut,
   onSignOutAll,
 }: {
   pathname: string;
-  email: string;
-  name: string | null | undefined;
+  onNavigate?: () => void;
   onSignOut: () => void;
   onSignOutAll: () => void;
 }) {
   return (
-    <aside
-      className={cn(
-        'fixed inset-y-0 left-0 z-40 hidden h-svh flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex',
-        SIDEBAR_WIDTH
-      )}
-    >
-      <SidebarBrand />
-      <nav className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-        <NavLinks pathname={pathname} />
+    <>
+      <Link href="/dashboard" onClick={onNavigate} className="flex h-14 shrink-0 items-center gap-2.5 px-4">
+        <BrandMark />
+        <span className="leading-tight">
+          <span className="block text-sm font-semibold">ThoughtExpense</span>
+          <span className="block text-xs text-sidebar-foreground/60">Console</span>
+        </span>
+      </Link>
+      <nav aria-label="Console" className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2.5 py-3">
+        <NavLinks pathname={pathname} onNavigate={onNavigate} />
       </nav>
-      <SidebarFooter email={email} name={name} onSignOut={onSignOut} onSignOutAll={onSignOutAll} />
-    </aside>
+      <div className="shrink-0 border-t border-sidebar-border p-2">
+        <AccountMenu onSignOut={onSignOut} onSignOutAll={onSignOutAll} />
+      </div>
+    </>
   );
 }
 
 export function AdminShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { user, logout, logoutEverywhere } = useAuthStore();
+  const { logout, logoutEverywhere } = useAuthStore();
+  const startPolling = useAttention((s) => s.startPolling);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const page = adminPageMeta(pathname);
+  const [confirmAll, setConfirmAll] = useState(false);
+
+  useEffect(() => startPolling(), [startPolling]);
 
   async function signOut() {
     await logout();
     router.replace('/login');
   }
 
-  async function signOutEverywhere() {
+  async function signOutEverywhere(): Promise<boolean> {
     try {
       await logoutEverywhere();
-      toast.success('Signed out of all sessions');
+      toast.success('Signed out on all devices');
       router.replace('/login');
+      return true;
     } catch {
-      toast.error('Could not sign out other sessions');
+      toast.error('Could not sign out other devices. Try again.');
+      return false;
     }
   }
 
-  const email = user?.email ?? '…';
+  const sidebarProps = {
+    pathname,
+    onSignOut: () => void signOut(),
+    onSignOutAll: () => setConfirmAll(true),
+  };
 
   return (
-    <div className="min-h-svh bg-muted/30">
-      <DesktopSidebar pathname={pathname} email={email} name={user?.name} onSignOut={signOut} onSignOutAll={signOutEverywhere} />
+    <div className="min-h-svh">
+      <a
+        href="#main"
+        className="sr-only z-50 rounded-md bg-card px-3 py-2 text-sm focus:not-sr-only focus:fixed focus:top-2 focus:left-2"
+      >
+        Skip to content
+      </a>
 
-      <div className={cn('flex min-h-svh min-w-0 flex-col md:ml-60')}>
-        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/80 md:px-6">
-          <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
-            <SheetTrigger
-              render={
-                <Button variant="outline" size="icon-sm" className="md:hidden" aria-label="Open menu">
-                  <Menu className="size-4" />
-                </Button>
-              }
-            />
-            <SheetContent side="left" className="w-[min(100vw-2rem,15rem)] gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground">
-              <SheetHeader className="border-b border-sidebar-border px-4 py-4 text-left">
-                <SheetTitle className="text-sidebar-foreground">ThoughtExpense Admin</SheetTitle>
-              </SheetHeader>
-              <nav className="flex-1 overflow-y-auto overscroll-contain px-3 py-4">
-                <NavLinks pathname={pathname} onNavigate={() => setMobileOpen(false)} />
-              </nav>
-              <div className="border-t border-sidebar-border p-3">
-                <p className="truncate px-1 text-xs text-sidebar-foreground/55">{email}</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="mt-2 w-full justify-start gap-2"
-                  onClick={() => {
-                    setMobileOpen(false);
-                    signOut();
-                  }}
-                >
-                  <LogOut className="size-4" />
-                  Sign out
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 text-sidebar-foreground/60"
-                  onClick={() => {
-                    setMobileOpen(false);
-                    void signOutEverywhere();
-                  }}
-                >
-                  <MonitorOff className="size-4" />
-                  Sign out everywhere
-                </Button>
-              </div>
-            </SheetContent>
-          </Sheet>
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-58 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
+        <SidebarBody {...sidebarProps} />
+      </aside>
 
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">{page.title}</p>
-            {page.description ? (
-              <p className="hidden truncate text-xs text-muted-foreground sm:block">{page.description}</p>
-            ) : null}
-          </div>
+      <Sheet open={mobileOpen} onOpenChange={setMobileOpen}>
+        <SheetContent
+          side="left"
+          className="flex w-[min(100vw-3rem,16rem)] flex-col gap-0 border-sidebar-border bg-sidebar p-0 text-sidebar-foreground"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <SidebarBody {...sidebarProps} onNavigate={() => setMobileOpen(false)} />
+        </SheetContent>
+      </Sheet>
 
-          <ThemeToggle />
+      <div className="flex min-h-svh min-w-0 flex-col md:pl-58">
+        <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b bg-background/90 px-4 backdrop-blur-sm md:px-8">
+          <Button variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" onClick={() => setMobileOpen(true)}>
+            <Menu />
+          </Button>
+          <UserSearch />
         </header>
 
-        <main className="flex-1">
-          <div className="mx-auto w-full max-w-6xl p-4 md:p-8">{children}</div>
+        <main id="main" className="flex-1 px-4 pt-8 pb-16 md:px-8">
+          <div className="mx-auto w-full max-w-[1120px]">{children}</div>
         </main>
       </div>
+
+      <Confirm
+        open={confirmAll}
+        onOpenChange={setConfirmAll}
+        title="Sign out on all devices?"
+        description="Every browser signed in to this admin account, including this one, will need to sign in again."
+        confirmLabel="Sign out everywhere"
+        busyLabel="Signing out…"
+        onConfirm={signOutEverywhere}
+      />
     </div>
   );
 }

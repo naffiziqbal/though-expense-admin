@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import { fetchMe, hasSession, onSessionEnded, type SessionEndReason } from '@/lib/api';
 import { useAuthStore } from '@/store/authStore';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BrandMark } from '@/components/admin-shell';
 
 /** Re-check the session when the tab regains focus, at most this often. */
 const REVALIDATE_MS = 60_000;
@@ -59,8 +59,8 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-screen items-center justify-center p-8">
-        <Skeleton className="h-8 w-48" />
+      <div className="flex min-h-screen items-center justify-center p-8" aria-busy="true" aria-label="Checking your session">
+        <BrandMark className="animate-pulse" />
       </div>
     );
   }

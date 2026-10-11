@@ -3,215 +3,178 @@
 import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { format } from 'date-fns';
+import { Search } from 'lucide-react';
 import { fetchUsers } from '@/lib/api';
-import type { UserAccessFilter, UserListItem } from '@/lib/types';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { count, date } from '@/lib/format';
+import { useLoad } from '@/lib/use-load';
+import type { UserAccessFilter } from '@/lib/types';
+import { cn } from '@/lib/utils';
+import { Empty, LoadError, PageHeader, Pager, Rows } from '@/components/console';
+import { AccessTag, AccountStatusTag } from '@/components/user-tags';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Skeleton } from '@/components/ui/skeleton';
 
-function moderationBadge(u: UserListItem) {
-  if (u.accountStatus === 'banned') return <Badge variant="destructive">Banned</Badge>;
-  if (u.accountStatus === 'suspended') return <Badge variant="outline">Suspended</Badge>;
-  return null;
-}
-
-function planBadge(u: UserListItem) {
-  if (!u.isPremium) return <Badge variant="secondary">Free</Badge>;
-  if (u.premiumAccess === 'manual') {
-    return (
-      <Badge className="bg-violet-600 hover:bg-violet-600" title="Comp / manual premium">
-        Premium · manual
-      </Badge>
-    );
-  }
-  if (u.premiumAccess === 'store') {
-    return <Badge>Premium · store</Badge>;
-  }
-  return <Badge>Premium</Badge>;
-}
+const LIMIT = 20;
 
 const ACCESS_OPTIONS: { value: UserAccessFilter; label: string; hint: string }[] = [
-  { value: 'all', label: 'All users', hint: 'Everyone' },
+  { value: 'all', label: 'Everyone', hint: 'All accounts' },
   { value: 'free', label: 'Free', hint: 'No premium access' },
-  { value: 'premium', label: 'All premium', hint: 'Store + manual comp' },
-  { value: 'paying', label: 'Paying (active store)', hint: 'RC/webhook path, valid period' },
-  { value: 'store', label: 'Store / RC on file', hint: 'Any premium with product id' },
-  { value: 'manual', label: 'Manual / comp', hint: 'Premium without store product' },
+  { value: 'premium', label: 'Premium', hint: 'Store and manual premium' },
+  { value: 'paying', label: 'Paying', hint: 'Store subscription inside its paid period' },
+  { value: 'store', label: 'Store on file', hint: 'Premium with a store product, including lapsed periods' },
+  { value: 'manual', label: 'Manual', hint: 'Premium without a store product: comps and offline payments' },
 ];
 
 function parseAccess(raw: string | null): UserAccessFilter {
-  if (raw === 'free' || raw === 'premium' || raw === 'manual' || raw === 'store' || raw === 'paying') {
-    return raw;
-  }
-  return 'all';
+  return ACCESS_OPTIONS.some((o) => o.value === raw) ? (raw as UserAccessFilter) : 'all';
 }
 
 function UsersPageContent() {
-  const searchParams = useSearchParams();
+  const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const access = parseAccess(searchParams.get('access'));
-  const [items, setItems] = useState<UserListItem[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [search, setSearch] = useState('');
-  const [query, setQuery] = useState('');
-  const [loadedKey, setLoadedKey] = useState('');
-  const fetchKey = `${page}\0${query}\0${access}`;
-  const loading = loadedKey !== fetchKey;
+  const access = parseAccess(params.get('access'));
+  const query = params.get('q') ?? '';
+  const page = Math.max(1, Number(params.get('page')) || 1);
+  const [draft, setDraft] = useState(query);
+  const [lastQuery, setLastQuery] = useState(query);
 
-  function setAccessFilter(next: UserAccessFilter) {
-    const params = new URLSearchParams(searchParams.toString());
-    if (next === 'all') params.delete('access');
-    else params.set('access', next);
-    const q = params.toString();
-    router.replace(q ? `${pathname}?${q}` : pathname);
-    setPage(1);
+  // Keep the box in sync when the URL changes from elsewhere (top-bar search, back button).
+  if (query !== lastQuery) {
+    setLastQuery(query);
+    setDraft(query);
   }
 
+  function setParams(next: { q?: string; access?: UserAccessFilter; page?: number }) {
+    const p = new URLSearchParams(params.toString());
+    const set = (k: string, v: string | null) => (v ? p.set(k, v) : p.delete(k));
+    if (next.q !== undefined) set('q', next.q.trim() || null);
+    if (next.access !== undefined) set('access', next.access === 'all' ? null : next.access);
+    set('page', next.page && next.page > 1 ? String(next.page) : null);
+    const qs = p.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }
+
+  // Search as you type, debounced.
   useEffect(() => {
-    let cancelled = false;
-    fetchUsers(page, query || undefined, access).then((data) => {
-      if (cancelled) return;
-      setItems(data.items);
-      setPages(data.pagination.pages);
-      setTotal(data.pagination.total);
-      setLoadedKey(fetchKey);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [page, query, access, fetchKey]);
+    if (draft.trim() === query) return;
+    const t = window.setTimeout(() => setParams({ q: draft }), 300);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draft]);
+
+  const list = useLoad(() => fetchUsers(page, query || undefined, access, LIMIT), `${page}|${query}|${access}`);
+  const hint = ACCESS_OPTIONS.find((o) => o.value === access)?.hint;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Users</h1>
-        <p className="text-sm text-muted-foreground">
-          <strong>Paying</strong> = Play/App product on file and subscription still in period (RevenueCat webhook
-          path). <strong>Manual</strong> = comp or paid offline — premium without a store product id.
-        </p>
-      </div>
+    <>
+      <PageHeader title="Users" description="Look up an account to check its plan, usage and billing history, or to take action on it." />
 
-      <div className="flex flex-wrap items-end gap-3">
-        <form
-          className="flex min-w-[240px] flex-1 max-w-md gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            setPage(1);
-            setQuery(search.trim());
-          }}
-        >
-          <Input
-            placeholder="Search email or name…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
+      <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="relative w-full lg:max-w-xs">
+          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <input
+            type="search"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            placeholder="Email or name"
+            aria-label="Search users by email or name"
+            className="h-9 w-full rounded-lg border border-input bg-card pr-3 pl-9 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/25 focus-visible:outline-none"
           />
-          <Button type="submit">Search</Button>
-        </form>
-        <Select value={access} onValueChange={(v) => setAccessFilter(v as UserAccessFilter)}>
-          <SelectTrigger className="w-[200px]">
-            <SelectValue placeholder="Access" />
-          </SelectTrigger>
-          <SelectContent>
-            {ACCESS_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>
-                {o.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      <p className="text-sm text-muted-foreground">
-        {total.toLocaleString()} users · {ACCESS_OPTIONS.find((o) => o.value === access)?.hint}
-      </p>
-
-      {loading ? (
-        <Skeleton className="h-64 w-full" />
-      ) : (
-        <div className="rounded-md border bg-background">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>User</TableHead>
-                <TableHead>Access</TableHead>
-                <TableHead>Expenses</TableHead>
-                <TableHead>Devices</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead />
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center text-muted-foreground">
-                    No users found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                items.map((u) => (
-                  <TableRow key={u.id}>
-                    <TableCell>
-                      <div className="font-medium">{u.name || '—'}</div>
-                      <div className="text-xs text-muted-foreground">{u.email}</div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-1">
-                        {moderationBadge(u)}
-                        {planBadge(u)}
-                      </div>
-                    </TableCell>
-                    <TableCell>{u._count.expenses}</TableCell>
-                    <TableCell>{u._count.deviceTokens}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {format(new Date(u.createdAt), 'MMM d, yyyy')}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Link
-                        href={`/dashboard/users/${u.id}`}
-                        className="text-sm font-medium text-primary hover:underline"
-                      >
-                        View
-                      </Link>
-                    </TableCell>
-                  </TableRow>
-                ))
+        </div>
+        <div
+          role="group"
+          aria-label="Filter by access"
+          className="flex w-full gap-1 overflow-x-auto rounded-lg border bg-card p-1 lg:w-auto"
+        >
+          {ACCESS_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={access === o.value}
+              title={o.hint}
+              onClick={() => setParams({ access: o.value })}
+              className={cn(
+                'h-7 shrink-0 rounded-md px-2.5 text-sm whitespace-nowrap transition-colors',
+                access === o.value ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground'
               )}
-            </TableBody>
-          </Table>
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+      {access !== 'all' ? <p className="mb-3 text-[13px] text-muted-foreground">{hint}.</p> : null}
+
+      {list.error ? (
+        <LoadError what="users" message={list.error} onRetry={list.reload} />
+      ) : (
+        <div className="overflow-hidden rounded-xl border bg-card">
+          {list.loading || !list.data ? (
+            <Rows n={8} />
+          ) : list.data.items.length === 0 ? (
+            <Empty title={query ? `No users match “${query}”` : 'No users in this group'}>
+              {query ? 'Check the spelling, or search by part of the email address.' : 'Try another filter above.'}
+            </Empty>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Account</TableHead>
+                  <TableHead>Access</TableHead>
+                  <TableHead className="text-right">Expenses</TableHead>
+                  <TableHead className="hidden text-right md:table-cell">Devices</TableHead>
+                  <TableHead className="hidden sm:table-cell">Joined</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {list.data.items.map((u) => (
+                  <TableRow
+                    key={u.id}
+                    className="cursor-pointer"
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('a')) return;
+                      router.push(`/dashboard/users/${u.id}`);
+                    }}
+                  >
+                    <TableCell className="max-w-[22rem]">
+                      <Link href={`/dashboard/users/${u.id}`} className="block truncate font-medium hover:underline">
+                        {u.email}
+                      </Link>
+                      <span className="block truncate text-xs text-muted-foreground">{u.name || 'No name'}</span>
+                    </TableCell>
+                    <TableCell>
+                      <span className="flex gap-1.5">
+                        <AccountStatusTag status={u.accountStatus} />
+                        <AccessTag isPremium={u.isPremium} access={u.premiumAccess} />
+                      </span>
+                    </TableCell>
+                    <TableCell className="num text-right">{count(u._count.expenses)}</TableCell>
+                    <TableCell className="num hidden text-right md:table-cell">{count(u._count.deviceTokens)}</TableCell>
+                    <TableCell className="hidden text-muted-foreground sm:table-cell">{date(u.createdAt)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+          {list.data ? (
+            <Pager
+              page={page}
+              pages={list.data.pagination.pages}
+              total={list.data.pagination.total}
+              limit={LIMIT}
+              noun="users"
+              onPage={(p) => setParams({ page: p })}
+            />
+          ) : null}
         </div>
       )}
-
-      <div className="flex items-center gap-2">
-        <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-          Previous
-        </Button>
-        <span className="text-sm text-muted-foreground">
-          Page {page} of {pages}
-        </span>
-        <Button variant="outline" size="sm" disabled={page >= pages} onClick={() => setPage((p) => p + 1)}>
-          Next
-        </Button>
-      </div>
-    </div>
+    </>
   );
 }
 
 export default function UsersPage() {
   return (
-    <Suspense fallback={<Skeleton className="h-64 w-full" />}>
+    <Suspense fallback={<Rows n={8} />}>
       <UsersPageContent />
     </Suspense>
   );

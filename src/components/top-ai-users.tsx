@@ -1,198 +1,131 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { fetchTopAiUsers } from '@/lib/api';
+import { aiKindLabel, compact, count, usd } from '@/lib/format';
+import { useLoad } from '@/lib/use-load';
 import type { TopAiUsersPeriod, TopAiUsersResponse, TopAiUsersSort } from '@/lib/types';
-import { kindLabel, usd } from '@/components/user-ai-cost';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
+import { Empty, Figure, LoadError, Rows, Section, Tag } from '@/components/console';
+import { RangeTabs } from '@/components/range-tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-
-const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
 
 type Row = TopAiUsersResponse['rows'][number];
 
-function signedUsd(n: number): string {
-  return n < 0 ? `−${usd(-n)}` : usd(n);
-}
+const PERIOD_LABEL: Record<TopAiUsersPeriod, string> = { month: 'This month', prev_month: 'Last month', all: 'All time' };
+const SORT_LABEL: Record<TopAiUsersSort, string> = { cost: 'Highest cost', tokens: 'Most tokens', margin: 'Lowest margin' };
 
-function FlagBadge({ row, threshold }: { row: Row; threshold: number }) {
+function FlagTag({ row, threshold }: { row: Row; threshold: number }) {
   if (row.flag === 'cost_exceeds_revenue') {
-    return (
-      <Badge variant="destructive" title="AI cost in this period is higher than what they paid">
-        Costs more than pays
-      </Badge>
-    );
+    return <Tag tone="critical" title="Their AI cost this period is higher than what they paid">Costs more than they pay</Tag>;
   }
   if (row.flag === 'free_high_cost') {
-    return (
-      <Badge variant="destructive" title={`Free user at or over ${usd(threshold)} AI cost this month`}>
-        Free · high cost
-      </Badge>
-    );
+    return <Tag tone="warn" title={`Free user at or over ${usd(threshold)} of AI this month`}>Free, high cost</Tag>;
   }
   return null;
 }
 
-/** Heaviest AI users with their AI cost against subscription revenue. */
+/** Heaviest AI users, with their AI cost set against what they paid. */
 export function TopAiUsers() {
   const [period, setPeriod] = useState<TopAiUsersPeriod>('month');
   const [sort, setSort] = useState<TopAiUsersSort>('cost');
-  const [data, setData] = useState<TopAiUsersResponse | null>(null);
-  const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [error, setError] = useState(false);
-  const key = `${period}:${sort}`;
-  const loading = loadedKey !== key;
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchTopAiUsers(period, sort)
-      .then((res) => {
-        if (cancelled) return;
-        setData(res);
-        setError(false);
-        setLoadedKey(key);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setData(null);
-        setError(true);
-        setLoadedKey(key);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [period, sort, key]);
+  const res = useLoad(() => fetchTopAiUsers(period, sort), `${period}:${sort}`);
+  const data = res.data;
 
   return (
-    <Card>
-      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-4 space-y-0">
-        <div className="space-y-1.5">
-          <CardTitle>Top AI users</CardTitle>
-          <CardDescription>
-            Gemini usage per user against what they paid. AI cost is estimated at paid-tier list price.
-          </CardDescription>
+    <Section
+      id="ai-users"
+      title="AI cost per user"
+      description="Gemini spend per user at paid-tier list price, against the net revenue they brought in."
+      flush
+      actions={
+        <>
+          <RangeTabs value={period} onChange={setPeriod} options={['month', 'prev_month', 'all'] as TopAiUsersPeriod[]} label={(v) => PERIOD_LABEL[v]} ariaLabel="Period" />
+          <RangeTabs value={sort} onChange={setSort} options={['cost', 'tokens', 'margin'] as TopAiUsersSort[]} label={(v) => SORT_LABEL[v]} ariaLabel="Sort by" />
+        </>
+      }
+    >
+      {res.loading ? (
+        <Rows n={6} />
+      ) : res.error || !data ? (
+        <div className="p-5">
+          <LoadError what="AI cost per user" message={res.error ?? ''} onRetry={res.reload} />
         </div>
-        <div className="flex flex-wrap gap-2">
-          <Tabs value={period} onValueChange={(v) => setPeriod(v as TopAiUsersPeriod)}>
-            <TabsList>
-              <TabsTrigger value="month">This month</TabsTrigger>
-              <TabsTrigger value="prev_month">Last month</TabsTrigger>
-              <TabsTrigger value="all">All time</TabsTrigger>
-            </TabsList>
-          </Tabs>
-          <Tabs value={sort} onValueChange={(v) => setSort(v as TopAiUsersSort)}>
-            <TabsList>
-              <TabsTrigger value="cost">By cost</TabsTrigger>
-              <TabsTrigger value="tokens">By tokens</TabsTrigger>
-              <TabsTrigger value="margin">By margin</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-      </CardHeader>
-      <CardContent>
-        {loading ? (
-          <Skeleton className="h-48 w-full" />
-        ) : error || !data ? (
-          <p className="text-sm text-destructive">Could not load AI usage per user.</p>
-        ) : data.rows.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No user-attributed AI usage in this period.</p>
-        ) : (
-          <>
-            <div className="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">
-              <span>
-                AI cost <strong className="tabular-nums">{usd(data.summary.aiCostUsd)}</strong>
-              </span>
-              <span>
-                Revenue <strong className="tabular-nums">{usd(data.summary.revenueUsd)}</strong>
-              </span>
-              <span>
-                Margin{' '}
-                <strong className="tabular-nums">
-                  {signedUsd(data.summary.revenueUsd - data.summary.aiCostUsd)}
-                </strong>
-              </span>
-              <span>
-                Flagged{' '}
-                <strong className={data.summary.flagged > 0 ? 'text-destructive' : undefined}>
-                  {data.summary.flagged}
-                </strong>{' '}
-                of {data.summary.users} users
-              </span>
-            </div>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-8">#</TableHead>
-                    <TableHead>User</TableHead>
-                    <TableHead className="text-right">Calls</TableHead>
-                    <TableHead className="text-right">Tokens (in / out)</TableHead>
-                    <TableHead className="text-right">AI cost</TableHead>
-                    <TableHead className="text-right">Revenue</TableHead>
-                    <TableHead className="text-right">Margin</TableHead>
-                    {data.period !== 'all' && <TableHead>Top feature</TableHead>}
-                    <TableHead />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {data.rows.map((r, i) => (
-                    <TableRow key={r.userId}>
-                      <TableCell className="text-muted-foreground">{i + 1}</TableCell>
-                      <TableCell>
-                        {r.user ? (
-                          <Link href={`/dashboard/users/${r.userId}`} className="hover:underline">
-                            <span className="font-medium">{r.user.email}</span>
-                            {r.user.isPremium && (
-                              <Badge variant="secondary" className="ml-2">
-                                Premium
-                              </Badge>
-                            )}
-                          </Link>
-                        ) : (
-                          <span className="text-muted-foreground">Deleted account · {r.userId.slice(0, 8)}</span>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums">{r.calls.toLocaleString()}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        <span className="font-medium">{compact.format(r.tokens)}</span>
-                        <span className="text-muted-foreground">
-                          {' '}
-                          ({compact.format(r.inputTokens)} / {compact.format(r.outputTokens)})
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right tabular-nums font-medium">{usd(r.costUsd)}</TableCell>
-                      <TableCell className="text-right tabular-nums">
-                        {r.revenueUsd !== 0 ? signedUsd(r.revenueUsd) : <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                      <TableCell
-                        className={`text-right tabular-nums ${r.marginUsd < 0 ? 'text-destructive' : 'text-muted-foreground'}`}
-                      >
-                        {signedUsd(r.marginUsd)}
-                      </TableCell>
-                      {data.period !== 'all' && (
-                        <TableCell className="text-sm">{r.topKind ? kindLabel(r.topKind) : '—'}</TableCell>
-                      )}
-                      <TableCell>
-                        <FlagBadge row={r} threshold={data.freeUserThresholdUsd} />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            <p className="mt-3 text-xs text-muted-foreground">
-              Totals cover every user with AI usage in the period, not just the rows shown. Revenue is net production
-              RevenueCat charges minus refunds received in the period; subscriptions billed before revenue capture show
-              as —. Free users are flagged at {usd(data.freeUserThresholdUsd)}+ AI cost per
-              month (<code>ALERT_FREE_USER_AI_USD</code>).
-            </p>
-          </>
-        )}
-      </CardContent>
-    </Card>
+      ) : data.rows.length === 0 ? (
+        <Empty title="No AI usage tied to a user in this period" />
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-x-6 gap-y-5 border-b px-5 py-5 lg:grid-cols-4">
+            <Figure label="AI cost" value={usd(data.summary.aiCostUsd)} note={`${count(data.summary.users)} users`} />
+            <Figure label="Revenue" value={usd(data.summary.revenueUsd)} note="Net of refunds" />
+            <Figure
+              label="Margin"
+              value={usd(data.summary.revenueUsd - data.summary.aiCostUsd)}
+              tone={data.summary.revenueUsd - data.summary.aiCostUsd < 0 ? 'critical' : undefined}
+            />
+            <Figure
+              label="Flagged users"
+              value={count(data.summary.flagged)}
+              tone={data.summary.flagged > 0 ? 'warn' : undefined}
+              note={`Free users flag at ${usd(data.freeUserThresholdUsd)} a month`}
+            />
+          </div>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead className="text-right">Calls</TableHead>
+                <TableHead className="hidden text-right md:table-cell">Tokens</TableHead>
+                <TableHead className="text-right">AI cost</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Revenue</TableHead>
+                <TableHead className="text-right">Margin</TableHead>
+                {data.period !== 'all' ? <TableHead className="hidden lg:table-cell">Top feature</TableHead> : null}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.rows.map((r) => (
+                <TableRow key={r.userId}>
+                  <TableCell className="max-w-[18rem]">
+                    {r.user ? (
+                      <Link href={`/dashboard/users/${r.userId}`} className="block truncate font-medium hover:underline">
+                        {r.user.email}
+                      </Link>
+                    ) : (
+                      <span className="text-muted-foreground">Deleted account</span>
+                    )}
+                    <span className="mt-1 flex flex-wrap gap-1.5">
+                      {r.user?.isPremium ? <Tag tone="teal">Premium</Tag> : r.user ? <Tag>Free</Tag> : null}
+                      <FlagTag row={r} threshold={data.freeUserThresholdUsd} />
+                    </span>
+                  </TableCell>
+                  <TableCell className="num text-right">{count(r.calls)}</TableCell>
+                  <TableCell className="num hidden text-right md:table-cell">
+                    {compact(r.tokens)}
+                    <span className="block text-xs text-muted-foreground">
+                      {compact(r.inputTokens)} in, {compact(r.outputTokens)} out
+                    </span>
+                  </TableCell>
+                  <TableCell className="num text-right font-medium">{usd(r.costUsd)}</TableCell>
+                  <TableCell className="num hidden text-right sm:table-cell">
+                    {r.revenueUsd !== 0 ? usd(r.revenueUsd) : <span className="text-muted-foreground">–</span>}
+                  </TableCell>
+                  <TableCell className={cn('num text-right', r.marginUsd < 0 ? 'font-medium text-critical' : 'text-muted-foreground')}>
+                    {usd(r.marginUsd)}
+                  </TableCell>
+                  {data.period !== 'all' ? (
+                    <TableCell className="hidden text-muted-foreground lg:table-cell">{r.topKind ? aiKindLabel(r.topKind) : '–'}</TableCell>
+                  ) : null}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+          <p className="border-t px-5 py-3 text-[13px] leading-relaxed text-muted-foreground">
+            Totals cover every user with AI usage in the period, not only the rows shown. Revenue is net RevenueCat charges minus
+            refunds in the period. Subscriptions billed before revenue tracking started show as –.
+          </p>
+        </>
+      )}
+    </Section>
   );
 }
