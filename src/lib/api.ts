@@ -367,6 +367,15 @@ export async function fetchAiUsage(days = 30) {
   return res.data.data as import('./types').AiUsageResponse;
 }
 
+export async function fetchTopAiUsers(
+  period: import('./types').TopAiUsersPeriod,
+  sort: import('./types').TopAiUsersSort,
+  limit = 20
+) {
+  const res = await client().get('/api/admin/ai/top-users', { params: { period, sort, limit } });
+  return res.data.data as import('./types').TopAiUsersResponse;
+}
+
 export async function fetchUserAiUsage(userId: string, days = 30) {
   const res = await client().get(`/api/admin/users/${userId}/ai-usage`, { params: { days } });
   return res.data.data as import('./types').UserAiUsageResponse;

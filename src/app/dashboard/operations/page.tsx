@@ -14,6 +14,7 @@ import type {
   RagHealthResponse,
   RevenueCatSyncResponse,
 } from '@/lib/types';
+import { TopAiUsers } from '@/components/top-ai-users';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -134,6 +135,8 @@ export default function OperationsPage() {
           )}
         </CardContent>
       </Card>
+
+      <TopAiUsers />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>

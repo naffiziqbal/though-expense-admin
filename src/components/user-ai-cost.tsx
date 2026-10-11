@@ -29,7 +29,7 @@ const KIND_LABELS: Record<string, string> = {
   budget_category: 'Budget parsing',
 };
 
-function kindLabel(kind: string): string {
+export function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind.replace(/_/g, ' ');
 }
 

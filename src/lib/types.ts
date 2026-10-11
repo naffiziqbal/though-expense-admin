@@ -287,3 +287,32 @@ export interface SystemBackups {
   /** From the backup script's marker file on the API host; null if not readable there */
   lastSuccessAt: string | null;
 }
+
+export type TopAiUsersPeriod = 'month' | 'prev_month' | 'all';
+
+export type TopAiUsersSort = 'cost' | 'tokens' | 'margin';
+
+export interface TopAiUsersResponse {
+  period: TopAiUsersPeriod;
+  /** YYYY-MM for monthly periods, null for all-time. */
+  month: string | null;
+  sort: TopAiUsersSort;
+  /** Monthly AI cost above which a free user is flagged. */
+  freeUserThresholdUsd: number;
+  summary: { users: number; aiCostUsd: number; revenueUsd: number; flagged: number };
+  rows: Array<{
+    userId: string;
+    calls: number;
+    inputTokens: number;
+    outputTokens: number;
+    tokens: number;
+    costUsd: number;
+    topKind: string | null;
+    /** Net production revenue (charges minus refunds) in the period. */
+    revenueUsd: number;
+    marginUsd: number;
+    flag: 'free_high_cost' | 'cost_exceeds_revenue' | null;
+    /** null when the account was deleted (its usage rollups are kept). */
+    user: { id: string; email: string; name: string | null; isPremium: boolean } | null;
+  }>;
+}
