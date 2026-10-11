@@ -221,18 +221,33 @@ export async function fetchMe() {
   return res.data.data.admin as { id: string; email: string; name: string | null };
 }
 
-export async function login(email: string, password: string) {
+/** Why sign-in was refused, when the API says: a second-factor code is needed or was wrong. */
+export class LoginError extends Error {
+  constructor(
+    message: string,
+    readonly code?: 'totp_required' | 'totp_invalid'
+  ) {
+    super(message);
+  }
+}
+
+export async function login(email: string, password: string, totp?: string) {
   try {
     const res = await client().post('/api/admin/auth/login', {
       email: email.trim().toLowerCase(),
       password,
+      ...(totp ? { totp } : {}),
     });
     const data = res.data?.data;
     if (!data?.token || !data?.refreshToken) throw new Error('Login failed');
     setSession({ token: data.token, refreshToken: data.refreshToken });
     return data as { admin: { id: string; email: string; name: string | null } } & SessionTokens;
   } catch (err) {
-    throw new Error(apiErrorMessage(err, 'Login failed'));
+    const code = isAxiosError(err) ? err.response?.data?.code : undefined;
+    throw new LoginError(
+      apiErrorMessage(err, 'Login failed'),
+      code === 'totp_required' || code === 'totp_invalid' ? code : undefined
+    );
   }
 }
 

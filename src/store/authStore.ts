@@ -14,7 +14,7 @@ import type { AdminUser } from '@/lib/types';
 interface AuthState {
   user: AdminUser | null;
   ready: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string, totp?: string) => Promise<void>;
   setUser: (user: AdminUser | null) => void;
   /** Revoke this browser's session on the server and clear local state. */
   logout: () => Promise<void>;
@@ -45,8 +45,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
   },
   setUser: (user) => set({ user }),
-  login: async (email, password) => {
-    const data = await apiLogin(email, password);
+  login: async (email, password, totp) => {
+    const data = await apiLogin(email, password, totp);
     set({
       user: {
         id: data.admin.id,

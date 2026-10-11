@@ -25,10 +25,13 @@ Apply migrations, then:
 ```bash
 cd server
 pnpm prisma migrate deploy   # or migrate dev locally
-pnpm admin:create -- --email ops@example.com --password 'YourSecurePass123' --name "Ops"
+pnpm admin:create -- --email ops@example.com --password 'a-long-passphrase' --name "Ops"   # 12+ characters
+pnpm admin:totp -- --email ops@example.com   # two-factor sign-in: add the printed key to an authenticator app
 ```
 
-Sign in at `/login` with that **email and password** (not a regular app user).
+Sign in at `/login` with that **email and password** (not a regular app user), then the 6-digit authenticator code. Once every admin has two-factor set up, set `ADMIN_REQUIRE_TOTP=true` on the server.
+
+Five failed sign-ins lock an account for 15 minutes. Every sign-in and every lock is announced on Telegram.
 
 For **RevenueCat entitlement checks** on Operations, set `REVENUECAT_SECRET_API_KEY` (and optionally `REVENUECAT_ENTITLEMENT_ID`) on the server.
 
